@@ -2684,9 +2684,9 @@ double svm_predict_and_explain_values(const svm_model *model, const svm_data x, 
                     sum += coef2[sj+k] * kvalue[sj+k];
                 for (h=0; h<seqlen; h++) {
                     for(k=0;k<ci;k++)
-                        explanation[h] += persv_explanation[h][si+k]*kvalue[si+k];
+                        explanation[h] += persv_explanation[h][si+k]*coef1[si+k];
                     for(k=0;k<cj;k++)
-                        explanation[h] += persv_explanation[h][si+k]*kvalue[sj+k];
+                        explanation[h] += persv_explanation[h][si+k]*coef2[sj+k];
                 }
                 sum -= model->rho[p];
                 dec_values[p] = sum;
