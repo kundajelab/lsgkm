@@ -2669,6 +2669,7 @@ double svm_predict_and_explain_values(const svm_model *model, const svm_data x, 
             for(int j=i+1;j<nr_class;j++)
             {
                 double sum = 0;
+                double sum2 = 0;
                 int si = start[i];
                 int sj = start[j];
                 int ci = model->nSV[i];
@@ -2686,7 +2687,7 @@ double svm_predict_and_explain_values(const svm_model *model, const svm_data x, 
                     for(k=0;k<ci;k++)
                         explanation[h] += persv_explanation[h][si+k]*coef1[si+k];
                     for(k=0;k<cj;k++)
-                        explanation[h] += persv_explanation[h][si+k]*coef2[sj+k];
+                        explanation[h] += persv_explanation[h][sj+k]*coef2[sj+k];
                 }
                 sum -= model->rho[p];
                 dec_values[p] = sum;
