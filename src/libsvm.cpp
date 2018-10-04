@@ -2620,25 +2620,32 @@ double svm_predict_values(const svm_model *model, const svm_data x, double* dec_
     }
 }
 
-double svm_predict_and_explain_values(const svm_model *model, const svm_data x, double* dec_values, double *explanation)
+double svm_predict_and_explain_values(const svm_model *model,
+    const svm_data x, double* dec_values, double **explanation, int mode)
 {
-    int i;
-    int j;
+    int i,j,k;
 
     int l = model->l;
     double *kvalue = Malloc(double,l);
 
     int seqlen = x.d->seqlen;
 
-    //initialize 2d array of per-sv explanation
-    double **persv_explanation = (double **) malloc(sizeof(double*) * ((size_t) (seqlen))); 
+    //initialize 3d array of per-sv explanation
+    double ***persv_explanation = (double ***) malloc(sizeof(double**) * ((size_t) (seqlen))); 
     for (i=0; i<seqlen; i++) {
-        persv_explanation[i] = (double *) malloc(sizeof(double) * ((size_t) l));
-        for(j=0; j<l; j++) { persv_explanation[i][j] = 0.0; }
+        persv_explanation[i] = (double **) malloc(sizeof(double*) * ((size_t) MAX_ALPHABET_SIZE));
+        for (j=0; j<MAX_ALPHABET_SIZE; j++) {
+            persv_explanation[i][j] = (double *) malloc(sizeof(double) * ((size_t) l));
+            for(k=0; k<l; k++) {
+                persv_explanation[i][j][k] = 0.0;
+            }
+        }
     }
     //initialize explanation
     for (i=0; i<seqlen; i++) {
-        explanation[i] = 0.0;
+        for (j=0; j<MAX_ALPHABET_SIZE; j++) {
+            explanation[i][j] = 0.0;
+        }
     }
 
     if(model->param.svm_type == ONE_CLASS ||
@@ -2652,7 +2659,8 @@ double svm_predict_and_explain_values(const svm_model *model, const svm_data x, 
     {
         int nr_class = model->nr_class;
 
-        gkmexplainkernel_kernelfunc_batch_sv(x.d, kvalue, persv_explanation);
+        gkmexplainkernel_kernelfunc_batch_sv(x.d, kvalue,
+                                             persv_explanation, mode);
 
         int *start = Malloc(int,nr_class);
         start[0] = 0;
@@ -2669,14 +2677,12 @@ double svm_predict_and_explain_values(const svm_model *model, const svm_data x, 
             for(int j=i+1;j<nr_class;j++)
             {
                 double sum = 0;
-                double sum2 = 0;
                 int si = start[i];
                 int sj = start[j];
                 int ci = model->nSV[i];
                 int cj = model->nSV[j];
                 
-                int k;
-                int h;
+                int k,h,g;
                 double *coef1 = model->sv_coef[j-1];
                 double *coef2 = model->sv_coef[i];
                 for(k=0;k<ci;k++)
@@ -2684,10 +2690,12 @@ double svm_predict_and_explain_values(const svm_model *model, const svm_data x, 
                 for(k=0;k<cj;k++)
                     sum += coef2[sj+k] * kvalue[sj+k];
                 for (h=0; h<seqlen; h++) {
-                    for(k=0;k<ci;k++)
-                        explanation[h] += persv_explanation[h][si+k]*coef1[si+k];
-                    for(k=0;k<cj;k++)
-                        explanation[h] += persv_explanation[h][sj+k]*coef2[sj+k];
+                    for (g=0; g<MAX_ALPHABET_SIZE; g++) { 
+                        for(k=0;k<ci;k++)
+                            explanation[h][g] += persv_explanation[h][g][si+k]*coef1[si+k];
+                        for(k=0;k<cj;k++)
+                            explanation[h][g] += persv_explanation[h][g][sj+k]*coef2[sj+k];
+                    }
                 }
                 sum -= model->rho[p];
                 dec_values[p] = sum;
@@ -2707,6 +2715,9 @@ double svm_predict_and_explain_values(const svm_model *model, const svm_data x, 
         free(kvalue);
         //free per-sv explanation
         for (i=0; i<seqlen; i++) {
+            for (j=0; j<MAX_ALPHABET_SIZE; j++) {
+                free(persv_explanation[i][j]);
+            }
             free(persv_explanation[i]);
         }
         free(persv_explanation);

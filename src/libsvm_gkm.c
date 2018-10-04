@@ -421,7 +421,7 @@ static void kmertree_dfs_withexplanation(const KmerTree *tree,
     const int last_seqid, const int depth, const int curr_node_index,
     const BaseMismatchCountForExplanation *curr_matching_bases,
     const int curr_num_matching_bases, int **mmprof,
-    double **persv_explanation)
+    double ***persv_explanation)
 {
     int i, j, k;
     int bid;
@@ -452,7 +452,8 @@ static void kmertree_dfs_withexplanation(const KmerTree *tree,
                                 int total_matches = 0;
                                 for (k=0; k<L; k++) {
                                     if ((currbase_base_lmer_match_history[k] == 1) || (k==L-1)) {
-                                        persv_explanation[seqpos+k][data[i].seqid] += to_distribute;
+                                        uint8_t base_then = *(curr_matching_bases[j].bid - ((L-1)-k));
+                                        persv_explanation[seqpos+k][base_then-1][data[i].seqid] += to_distribute;
                                         total_matches += 1;
                                     } 
                                 } 
@@ -471,7 +472,8 @@ static void kmertree_dfs_withexplanation(const KmerTree *tree,
                                 int total_matches = 0;
                                 for (k=0; k<L; k++) {
                                     if ((currbase_base_lmer_match_history[k] == 1) && (k<(L-1))) {
-                                        persv_explanation[seqpos+k][data[i].seqid] += to_distribute;
+                                        uint8_t base_then = *(curr_matching_bases[j].bid - ((L-1)-k));
+                                        persv_explanation[seqpos+k][base_then-1][data[i].seqid] += to_distribute;
                                         total_matches += 1;
                                     } 
                                 } 
@@ -1031,7 +1033,7 @@ static void gkmkernel_kernelfunc_batch_single(const gkm_data *da, KmerTree *tree
 static void gkmexplainkernel_kernelfunc_batch_single(
     const gkm_data *da,
     KmerTree *tree, const int start, const int end,
-    double *res, double **persv_explanation) 
+    double *res, double ***persv_explanation, int mode) 
 {
     int i, j, k;
     BaseMismatchCountForExplanation matching_bases[MAX_SEQ_LENGTH];
@@ -1054,9 +1056,18 @@ static void gkmexplainkernel_kernelfunc_batch_single(
         for(j=0; j<end; j++) { mmprofile[k][j] = 0; }
     }
 
-    kmertree_dfs_withexplanation(tree, end, 0, 0, matching_bases,
-                                 num_matching_bases, mmprofile,
-                                 persv_explanation);
+    switch (mode) {
+        case 0:
+            kmertree_dfs_withexplanation(tree, end, 0, 0, matching_bases,
+                                         num_matching_bases, mmprofile,
+                                         persv_explanation);
+            break;
+        case 1:
+            assert (1==2); //not implemented yet
+            break;
+        default:
+            assert (1==2); //shouldn't be here
+    }
 
     for (j=start; j<end; j++) {
         double sum = 0;
@@ -1065,7 +1076,7 @@ static void gkmexplainkernel_kernelfunc_batch_single(
         }
         double sum2 = 0;
         for (k=0; k < da->seqlen; k++) {
-            sum2 += persv_explanation[k][j];
+            sum2 += persv_explanation[k][da->seq[k]-1][j];
         }
         assert (fabs(sum-sum2) < 0.0000001);
         res[j-start] = sum;
@@ -1817,14 +1828,14 @@ double* gkmkernel_kernelfunc_batch_all(const int a, const int start, const int e
 }
 
 /* calculate multiple kernels WITH EXPLANATION using precomputed kmertree with SVs */
-double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, double **persv_explanation) 
+double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, double ***persv_explanation, int mode) 
 {
     if (g_sv_kmertree == NULL) {
         clog_error(CLOG(LOGGER_ID), "in gkmexplainkernel_kernelfunc_batch_sv, kmertree for SVs has not been initialized. call gkmkernel_init_sv() first.");
         return NULL;
     }
 
-    int j, k;
+    int j, k, h;
     struct timeval time_start, time_end;
 
     gettimeofday(&time_start, NULL);
@@ -1832,7 +1843,7 @@ double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, do
     //initialize results
     for (j=0; j<g_sv_num; j++) { res[j] = 0; }
 
-    gkmexplainkernel_kernelfunc_batch_single(da, g_sv_kmertree, 0, g_sv_num, res, persv_explanation);
+    gkmexplainkernel_kernelfunc_batch_single(da, g_sv_kmertree, 0, g_sv_num, res, persv_explanation, mode);
 
     //normalization
     double da_sqnorm = da->sqnorm;
@@ -1840,7 +1851,9 @@ double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, do
         double denom = (da_sqnorm*g_sv_svm_data[j].d->sqnorm);
         res[j] /= denom;
         for (k=0; k<da->seqlen; k++) {
-            persv_explanation[k][j] /= denom;
+            for (h=0; h<MAX_ALPHABET_SIZE; h++) {
+                persv_explanation[k][h][j] /= denom;
+            }
         } 
     }
 
@@ -1854,12 +1867,14 @@ double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, do
             //compute the total importance
             double per_sv_total = 0;
             for (k=0; k<da->seqlen; k++) {
-                per_sv_total += persv_explanation[k][j];
+                per_sv_total += persv_explanation[k][da->seq[k]-1][j];
             } 
             //distribute diff_from_ref proportionally
             for (k=0; k<da->seqlen; k++) {
-                persv_explanation[k][j] = diff_from_ref*(
-                 persv_explanation[k][j]/per_sv_total);
+                for (h=0; h<MAX_ALPHABET_SIZE; h++) {
+                    persv_explanation[k][h][j] = diff_from_ref*(
+                     persv_explanation[k][h][j]/per_sv_total);
+                }
             } 
         }
     }
@@ -2204,7 +2219,6 @@ static bool read_model_header(FILE *fp, svm_model* model)
 svm_model *svm_load_model(const char *model_file_name,
                           uint8_t force_nonlinear_init)
 {
-    clog_info(CLOG(LOGGER_ID), "In svm_load_model");
     FILE *fp = fopen(model_file_name,"rb");
     if(fp==NULL) return NULL;
 
@@ -2233,7 +2247,6 @@ svm_model *svm_load_model(const char *model_file_name,
         return NULL;
     }
 
-    clog_info(CLOG(LOGGER_ID), "Calling gkmkernel_init");
     // initialization of gkmkernel after reading header
     gkmkernel_init(&model->param);
 

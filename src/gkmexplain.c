@@ -48,7 +48,6 @@ void print_usage_and_exit()
             "                   2 -- progress msgs at coarse-grained level (INFO)\n"
             "                   3 -- progress msgs at fine-grained level (DEBUG)\n"
             "                   4 -- progress msgs at finer-grained level (TRACE)\n"
-            "-T <1|4|16>      set the number of threads for parallel calculation, 1, 4, or 16\n"
             "                 (default: 1)\n"
             "\n");
     exit(0);
@@ -80,40 +79,56 @@ static char* readline(FILE *input)
     return line;
 }
 
-double calculate_score_and_explanation(char *seq, double *explanation)
+double calculate_score_and_explanation(char *seq,
+                                       double **explanation,
+                                       int mode)
 {
     union svm_data x;
     double score;
 
     x.d = gkmkernel_new_object(seq, NULL, 0);
 
-    svm_predict_and_explain_values(model, x, &score, explanation);
+    svm_predict_and_explain_values(model, x, &score, explanation, mode);
 
     gkmkernel_delete_object(x.d);
 
     return score;
 }
 
-void predict_and_explain(FILE *input, FILE *output)
+void predict_and_explain(FILE *input, FILE *output, int mode)
 {
     int iseq = -1;
     char seq[MAX_SEQ_LENGTH];
     char sid[MAX_SEQ_LENGTH];
-    double explanation[MAX_SEQ_LENGTH];
+    int i, j;
+
+    //I don't know how to get 2d arrays to behave through function calls
+    // except by using malloc, since I'm not a c programmer...
+    double **explanation = (double **) malloc(sizeof(double*) * ((size_t) (MAX_SEQ_LENGTH)));
+    for (i=0; i<MAX_SEQ_LENGTH; i++) {
+        explanation[i] = (double *) malloc(sizeof(double) * ((size_t) MAX_ALPHABET_SIZE));
+        for(j=0; j<MAX_ALPHABET_SIZE; j++) { explanation[i][j] = 0; }
+    }
+
     int seqlen = 0;
-    int i;
     sid[0] = '\0';
     while (readline(input)) {
         if (line[0] == '>') {
             if (iseq >= 0) {
                 double score = calculate_score_and_explanation(seq,
-                                                               explanation);
+                                                               explanation,
+                                                               mode);
                 fprintf(output, "%s\t%g\t",sid, score);
                 for (i=0; i<seqlen; i++) {
                     if (i > 0) {
-                        fprintf(output, ",");
+                        fprintf(output, ";");
                     }
-                    fprintf(output, "%g", explanation[i]);
+                    for (j=0; j<MAX_ALPHABET_SIZE; j++) { 
+                        if (j > 0) {
+                            fprintf(output, ",");
+                        }
+                        fprintf(output, "%g", explanation[i][j]);
+                    }
                 }
                 fprintf(output, "\n");
                 if ((iseq + 1) % 100 == 0) {
@@ -144,15 +159,26 @@ void predict_and_explain(FILE *input, FILE *output)
     }
 
     // last one
-    double score = calculate_score_and_explanation(seq, explanation);
+    double score = calculate_score_and_explanation(seq, explanation, mode);
     fprintf(output, "%s\t%g\t",sid, score);
     for (i=0; i<seqlen; i++) {
         if (i > 0) {
-            fprintf(output, ",");
+            fprintf(output, ";");
         }
-        fprintf(output, "%g", explanation[i]);
+        for (j=0; j<MAX_ALPHABET_SIZE; j++) { 
+            if (j > 0) {
+                fprintf(output, ",");
+            }
+            fprintf(output, "%g", explanation[i][j]);
+        }
     }
     fprintf(output, "\n");
+
+    //free explanation
+    for (i=0; i<MAX_SEQ_LENGTH; i++) {
+        free(explanation[i]);
+    }
+    free(explanation);
 
     clog_info(CLOG(LOGGER_ID), "%d scored", iseq+1);
 
@@ -164,6 +190,7 @@ int main(int argc, char **argv)
     FILE *input, *output;
     int verbosity = 2;
     int nthreads = 1;
+    int mode = 0;
 
     /* Initialize the logger */
     if (clog_init_fd(LOGGER_ID, 1) != 0) {
@@ -177,13 +204,13 @@ int main(int argc, char **argv)
 	if(argc == 1) { print_usage_and_exit(); }
 
 	int c;
-	while ((c = getopt (argc, argv, "v:T:")) != -1) {
+	while ((c = getopt (argc, argv, "v:m:")) != -1) {
 		switch (c) {
             case 'v':
                 verbosity = atoi(optarg);
                 break;
-            case 'T':
-                nthreads = atoi(optarg);
+            case 'm':
+                mode = atoi(optarg);
                 break;
 			default:
                 fprintf(stderr,"Unknown option: -%c\n", c);
@@ -223,6 +250,11 @@ int main(int argc, char **argv)
             print_usage_and_exit();
     }
 
+    if (mode != 0 && mode != 1) {
+            fprintf(stderr, "Unknown interpretation mode: %d\n", mode);
+            print_usage_and_exit();
+    }
+
     gkmkernel_set_num_threads(nthreads);
 
     input = fopen(testfile,"r");
@@ -248,7 +280,7 @@ int main(int argc, char **argv)
     line = (char *)malloc(((size_t) max_line_len) * sizeof(char));
 
     clog_info(CLOG(LOGGER_ID), "write prediction result to %s", outfile);
-    predict_and_explain(input, output);
+    predict_and_explain(input, output, mode);
     svm_free_and_destroy_model(&model);
     free(line);
     fclose(input);
