@@ -48,7 +48,9 @@ void print_usage_and_exit()
             "                   2 -- progress msgs at coarse-grained level (INFO)\n"
             "                   3 -- progress msgs at fine-grained level (DEBUG)\n"
             "                   4 -- progress msgs at finer-grained level (TRACE)\n"
-            "                 (default: 1)\n"
+            " -m <0|1>  set the explanation mode (default: 0)\n"
+            "                   0 -- importance scores\n"
+            "                   1 -- hypothetical importance scores\n"
             "\n");
     exit(0);
 }
