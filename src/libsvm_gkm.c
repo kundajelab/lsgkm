@@ -446,22 +446,16 @@ static void kmertree_dfs_withexplanation(const KmerTree *tree,
                         const int leaf_cnt = leaf->count;
                         const KmerTreeLeafData *data = leaf->data;
                         int *mmprof_mmcnt = mmprof[currbase_mmcnt];
-                        double alpha = (g_weights[currbase_mmcnt]*(1-currbase_mmcnt) + g_weights[currbase_mmcnt-1]*(currbase_mmcnt))/L;
-                        double beta = alpha + g_weights[currbase_mmcnt] - g_weights[currbase_mmcnt-1];
+                        double alpha = g_weights[currbase_mmcnt]/(L-currbase_mmcnt);
                         for (i=0; i<leaf_cnt; i++) { 
                             if (data[i].seqid < last_seqid) {
-                                //double to_distribute = (g_weights[currbase_mmcnt]*(data[i].wt*currbase_wt))/(L-currbase_mmcnt);
                                 double weighted_alpha = alpha*(data[i].wt*currbase_wt);
-                                double weighted_beta = beta*(data[i].wt*currbase_wt);
                                 int total_matches = 0;
                                 for (k=0; k<L; k++) {
                                     uint8_t base_then = *(curr_matching_bases[j].bid - ((L-1)-k));
                                     if ((currbase_base_lmer_match_history[k] == 1) || (k==L-1)) {
-                                        //persv_explanation[seqpos+k][base_then-1][data[i].seqid] += to_distribute;
                                         persv_explanation[seqpos+k][base_then-1][data[i].seqid] += weighted_alpha;
                                         total_matches += 1;
-                                    } else {
-                                        persv_explanation[seqpos+k][base_then-1][data[i].seqid] += weighted_beta;
                                     }
                                 } 
                                 assert (total_matches==(L-currbase_mmcnt));
@@ -473,22 +467,16 @@ static void kmertree_dfs_withexplanation(const KmerTree *tree,
                         const int leaf_cnt = leaf->count;
                         const KmerTreeLeafData *data = leaf->data;
                         int *mmprof_mmcnt = mmprof[currbase_mmcnt+1];
-                        double alpha = (g_weights[(currbase_mmcnt+1)]*(-currbase_mmcnt) + g_weights[currbase_mmcnt]*((currbase_mmcnt+1)))/L;
-                        double beta = alpha + g_weights[currbase_mmcnt+1] - g_weights[currbase_mmcnt];
+                        double alpha = g_weights[(currbase_mmcnt+1)]/(L-(currbase_mmcnt+1));
                         for (i=0; i<leaf_cnt; i++) { 
                             if (data[i].seqid < last_seqid) {
-                                //double to_distribute = (g_weights[currbase_mmcnt+1]*(data[i].wt*currbase_wt))/(L-(currbase_mmcnt+1));
                                 double weighted_alpha = alpha*(data[i].wt*currbase_wt);
-                                double weighted_beta = beta*(data[i].wt*currbase_wt);
                                 int total_matches = 0;
                                 for (k=0; k<L; k++) {
                                     uint8_t base_then = *(curr_matching_bases[j].bid - ((L-1)-k));
                                     if ((currbase_base_lmer_match_history[k] == 1) && (k<(L-1))) {
-                                        //persv_explanation[seqpos+k][base_then-1][data[i].seqid] += to_distribute;
                                         persv_explanation[seqpos+k][base_then-1][data[i].seqid] += weighted_alpha;
                                         total_matches += 1;
-                                    } else { 
-                                        persv_explanation[seqpos+k][base_then-1][data[i].seqid] += weighted_beta;
                                     }
                                 } 
                                 assert (total_matches==(L-(currbase_mmcnt+1)));
@@ -603,10 +591,15 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                             gweight_now = g_weights[currbase_mmcnt];
                             gweight_onemoremismatch = g_weights[currbase_mmcnt+1];
                         }
-                        const double alpha = (gweight_now*(1-currbase_mmcnt) + gweight_onefewermismatch*currbase_mmcnt)/L;
-                        const double beta = alpha + gweight_now - gweight_onefewermismatch;
+                        //match->match
+                        const double alpha = gweight_now/(L-currbase_mmcnt);
+                        //mismatch->mismatch
+                        const double beta = 0;
+                        //match->mismatch
                         const double gamma = alpha + gweight_onemoremismatch - gweight_now;
-                        double weighted_alpha, weighted_beta, weighted_gamma;
+                        //mismatch->match
+                        const double kappa = alpha + gweight_onefewermismatch - gweight_now;
+                        double weighted_alpha, weighted_beta, weighted_gamma, weighted_kappa;
                         int total_matches;
                         uint8_t base_then;
                         int tree_lmer_base_then;
@@ -617,6 +610,7 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                                 weighted_alpha = to_weight*alpha;
                                 weighted_beta = to_weight*beta;
                                 weighted_gamma = to_weight*gamma;
+                                weighted_kappa = to_weight*kappa;
                                 //if a mutation would induce an additional mismatch or one less mismatch,
                                 // it should inherit the total delta in score
                                 total_matches = 0;
@@ -637,7 +631,7 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                                         } else {
                                             assert (currbase_base_lmer_match_history[k] == 0);
                                             if (h==tree_lmer_base_then) {
-                                                persv_explanation[seqpos+k][h-1][data[i].seqid] += weighted_alpha;
+                                                persv_explanation[seqpos+k][h-1][data[i].seqid] += weighted_kappa;
                                             } else {
                                                 persv_explanation[seqpos+k][h-1][data[i].seqid] += weighted_beta;
                                             }
