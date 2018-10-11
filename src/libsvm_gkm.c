@@ -556,70 +556,79 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                     const int seqpos = curr_matching_bases[j].seqpos;
                     uint8_t *currbase_base_lmer_match_history = curr_matching_bases[j].base_lmer_match_history;
                     if (currbase != bid) {
-                        currbase_mmcnt += 1
-                        currbase_base_lmer_match_history[depth] = 0
+                        currbase_mmcnt += 1;
+                        currbase_base_lmer_match_history[depth] = 0;
                     } else {
-                        currbase_base_lmer_match_history[depth] = 1
+                        currbase_base_lmer_match_history[depth] = 1;
                     }
-                    assert (currbase_mmcnt <= (d+1))
-                    
-                    tree_lmer[depth] = bid;
-                    const int leaf_cnt = leaf->count;
-                    const KmerTreeLeafData *data = leaf->data;
-                    int *mmprof_mmcnt;
-                    if (currbase_mmcnt <= d) {
-                        mmprof_mmcnt = mmprof[currbase_mmcnt];
-                    }
-                    double gweight_now, gweight_onemoremismatch;
-                    double gweight_onefewermismatch = g_weights[currbase_mmcnt-1];
-                    if (currbase_mmcnt==(d+1)) {
-                        gweight_now = 0;
-                        gweight_onemoremismatch = 0;
-                    } else if (currbase_mmcnt==d) {
-                        gweight_now = g_weights[currbase_mmcnt];
-                        gweight_onemoremismatch = 0;
-                    } else {
-                        assert (currbase_mmcnt < d);
-                        gweight_now = g_weights[currbase_mmcnt];
-                        gweight_onemoremismatch = g_weights[currbase_mmcnt+1];
-                    }
-                    double alpha = gweight_now*(1-())
-                    for (i=0; i<leaf_cnt; i++) { 
-                        if (data[i].seqid < last_seqid) {
-                            double to_weight = data[i].wt*currbase_wt;
-                            double to_distribute = (gweight_now*to_weight)/(L-currbase_mmcnt);
-                            //if a mutation would induce an additional mismatch or one less mismatch,
-                            // it should inherit the total delta in score
-                            double to_distribute_onefewermismatch = to_distribute + (gweight_onefewermismatch-gweight_now)*to_weight;
-                            double to_distribute_onemoremismatch = to_distribute + (gweight_onemoremismatch-gweight_now)*to_weight; 
-                            int total_matches = 0;
-                            for (k=0; k<L; k++) {
-                                uint8_t base_then = *(curr_matching_bases[j].bid - ((L-1)-k));
-                                int tree_lmer_base_then = tree_lmer[k];
-                                if (base_then==tree_lmer_base_then) { 
-                                    assert (currbase_base_lmer_match_history[k] == 1);
-                                }
-                                for (h=1; h<=MAX_ALPHABET_SIZE; h++) { 
+                    assert (currbase_mmcnt <= (d+2));
+                    if (currbase_mmcnt <= (d+1)) {
+                        tree_lmer[depth] = bid;
+                        const int leaf_cnt = leaf->count;
+                        const KmerTreeLeafData *data = leaf->data;
+                        int *mmprof_mmcnt;
+                        if (currbase_mmcnt <= d) {
+                            mmprof_mmcnt = mmprof[currbase_mmcnt];
+                        }
+                        double gweight_now, gweight_onemoremismatch;
+                        double gweight_onefewermismatch = g_weights[currbase_mmcnt-1];
+                        if (currbase_mmcnt==(d+1)) {
+                            gweight_now = 0;
+                            gweight_onemoremismatch = 0;
+                        } else if (currbase_mmcnt==d) {
+                            gweight_now = g_weights[currbase_mmcnt];
+                            gweight_onemoremismatch = 0;
+                        } else {
+                            assert (currbase_mmcnt < d);
+                            gweight_now = g_weights[currbase_mmcnt];
+                            gweight_onemoremismatch = g_weights[currbase_mmcnt+1];
+                        }
+                        //const double alpha = (gweight_now*(1-currbase_mmcnt) + gweight_onefewermismatch*currbase_mmcnt)/L;
+                        //const double beta = alpha + gweight_now - gweight_onefewermismatch;
+                        //const double gamma = alpha + gweight_onemoremismatch - gweight_now;
+                        //double weighted_alpha, weighted_beta, weighted_gamma;
+                        int total_matches;
+                        uint8_t base_then;
+                        int tree_lmer_base_then;
+
+                        double to_weight, to_distribute, to_distribute_onefewermismatch, to_distribute_onemoremismatch;
+                        for (i=0; i<leaf_cnt; i++) { 
+                            if (data[i].seqid < last_seqid) {
+                                to_weight = data[i].wt*currbase_wt;
+                                to_distribute = (gweight_now*to_weight)/(L-currbase_mmcnt);
+                                //if a mutation would induce an additional mismatch or one less mismatch,
+                                // it should inherit the total delta in score
+                                to_distribute_onefewermismatch = to_distribute + (gweight_onefewermismatch-gweight_now)*to_weight;
+                                to_distribute_onemoremismatch = to_distribute + (gweight_onemoremismatch-gweight_now)*to_weight; 
+                                total_matches = 0;
+                                for (k=0; k<L; k++) {
+                                    base_then = *(curr_matching_bases[j].bid - ((L-1)-k));
+                                    tree_lmer_base_then = tree_lmer[k];
                                     if (base_then==tree_lmer_base_then) { 
-                                        if (h==tree_lmer_base_then) {
-                                            persv_explanation[seqpos+k][h-1][data[i].seqid] += to_distribute;
-                                            total_matches += 1;
+                                        assert (currbase_base_lmer_match_history[k] == 1);
+                                    }
+                                    for (h=1; h<=MAX_ALPHABET_SIZE; h++) { 
+                                        if (base_then==tree_lmer_base_then) { 
+                                            if (h==tree_lmer_base_then) {
+                                                persv_explanation[seqpos+k][h-1][data[i].seqid] += to_distribute;
+                                                total_matches += 1;
+                                            } else {
+                                                assert (h != base_then);
+                                                persv_explanation[seqpos+k][h-1][data[i].seqid] += to_distribute_onemoremismatch;
+                                            }
                                         } else {
-                                            assert (h != base_then);
-                                            persv_explanation[seqpos+k][h-1][data[i].seqid] += to_distribute_onemoremismatch;
-                                        }
-                                    } else {
-                                        assert (currbase_base_lmer_match_history[k] == 0);
-                                        if (h==tree_lmer_base_then) {
-                                            assert (h != base_then);
-                                            persv_explanation[seqpos+k][h-1][data[i].seqid] += to_distribute_onefewermismatch;
+                                            assert (currbase_base_lmer_match_history[k] == 0);
+                                            if (h==tree_lmer_base_then) {
+                                                assert (h != base_then);
+                                                persv_explanation[seqpos+k][h-1][data[i].seqid] += to_distribute_onefewermismatch;
+                                            }
                                         }
                                     }
+                                } 
+                                assert (total_matches==(L-currbase_mmcnt));
+                                if (currbase_mmcnt <= d) {
+                                    mmprof_mmcnt[data[i].seqid] += (data[i].wt*currbase_wt); 
                                 }
-                            } 
-                            assert (total_matches==(L-currbase_mmcnt));
-                            if (currbase_mmcnt <= d) {
-                                mmprof_mmcnt[data[i].seqid] += (data[i].wt*currbase_wt); 
                             }
                         }
                     }
