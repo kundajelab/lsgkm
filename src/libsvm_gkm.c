@@ -549,7 +549,7 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
     const int last_seqid, const int depth, const int curr_node_index,
     const BaseMismatchCountForExplanation *curr_matching_bases,
     const int curr_num_matching_bases, int **mmprof,
-    double ***persv_explanation, int *tree_lmer)
+    double ***persv_explanation, int *tree_lmer, uint8_t one_mismatch_deeper)
 {
     int i, j, k, h;
     int bid;
@@ -557,6 +557,7 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
     const int d = g_param->d; //for small speed-up
     const int L = g_param->L;
 
+    assert ((one_mismatch_deeper==0) || (one_mismatch_deeper==1));
 
     if (depth == tree->depth - 1) {
         KmerTreeLeaf *leaf = tree->leaf + (curr_node_index*MAX_ALPHABET_SIZE) - tree->node_count;
@@ -575,8 +576,13 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                     } else {
                         currbase_base_lmer_match_history[depth] = 1;
                     }
-                    assert (currbase_mmcnt <= (d+2));
-                    if (currbase_mmcnt <= (d+1)) {
+                    if (one_mismatch_deeper==1) {
+                        assert (currbase_mmcnt <= (d+2));
+                    } else {
+                        assert (currbase_mmcnt <= (d+1));
+                    }
+                    if (((currbase_mmcnt <= (d+1)) && (one_mismatch_deeper==1)) ||
+                        ((currbase_mmcnt <= d) && (one_mismatch_deeper==0))) {
                         tree_lmer[depth] = bid;
                         const int leaf_cnt = leaf->count;
                         const KmerTreeLeafData *data = leaf->data;
@@ -640,6 +646,7 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                                 } 
                                 assert (total_matches==(L-currbase_mmcnt));
                                 if (currbase_mmcnt <= d) {
+                                    #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
                                     mmprof_mmcnt[data[i].seqid] += (data[i].wt*currbase_wt); 
                                 }
                             }
@@ -671,7 +678,8 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                         currbase_base_lmer_match_history[depth] = 1;
                         next_matching_bases[next_num_matching_bases].base_lmer_match_history = currbase_base_lmer_match_history;
                         next_num_matching_bases++;
-                    } else if (currbase_mmcnt <= d) {
+                    } else if (((currbase_mmcnt <= d) && (one_mismatch_deeper==1)) ||
+                               ((currbase_mmcnt < d) && (one_mismatch_deeper==0))) {
                         // non-matching
                         next_matching_bases[next_num_matching_bases].bid = currbase_ptr+1;
                         next_matching_bases[next_num_matching_bases].wt = curr_matching_bases[j].wt;
@@ -687,7 +695,7 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                     kmertree_dfs_withhypexplanation(tree, last_seqid, depth+1,
                      daughter_node_index, next_matching_bases,
                      next_num_matching_bases, mmprof,
-                     persv_explanation, tree_lmer);
+                     persv_explanation, tree_lmer, one_mismatch_deeper);
                 } 
             }
         }
@@ -1220,6 +1228,7 @@ static void gkmexplainkernel_kernelfunc_batch_single(
         for(j=0; j<end; j++) { mmprofile[k][j] = 0; }
     }
 
+    int *tree_lmer;
     switch (mode) {
         case 0:
             kmertree_dfs_withexplanation(tree, end, 0, 0, matching_bases,
@@ -1227,11 +1236,16 @@ static void gkmexplainkernel_kernelfunc_batch_single(
                                          persv_explanation);
             break;
         case 1:
-            int *tree_lmer;
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
-                                         persv_explanation, tree_lmer);
+                                         persv_explanation, tree_lmer, 0);
+            break;
+        case 2:
+            tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
+            kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
+                                         num_matching_bases, mmprofile,
+                                         persv_explanation, tree_lmer, 1);
             break;
         default:
             assert (1==2); //shouldn't be here
