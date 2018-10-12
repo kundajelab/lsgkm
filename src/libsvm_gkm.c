@@ -579,8 +579,12 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                         if (currbase_mmcnt <= d) {
                             mmprof_mmcnt = mmprof[currbase_mmcnt];
                         }
-                        double gweight_now, gweight_onemoremismatch;
-                        double gweight_onefewermismatch = g_weights[currbase_mmcnt-1];
+                        double gweight_now, gweight_onemoremismatch, gweight_onefewermismatch;
+                        if (currbase_mmcnt > 0) {
+                            gweight_onefewermismatch = g_weights[currbase_mmcnt-1];
+                        } else {
+                            gweight_onefewermismatch = g_weights[0];
+                        }
                         if (currbase_mmcnt==(d+1)) {
                             gweight_now = 0;
                             gweight_onemoremismatch = 0;
@@ -605,13 +609,23 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                         } else {
                             //match->match
                             //same as in the perturbation_eff case
-                            alpha = gweight_now/(L-currbase_mmcnt);
-                            //mismatch->mismatch
-                            beta = 0;
-                            //match->mismatch
-                            gamma = 0;
-                            //mismatch->match
-                            kappa = gweight_onefewermismatch/(L-(currbase_mmcnt-1));
+                            if (currbase_mmcnt == 0) {
+                                alpha = gweight_onefewermismatch/(L-(currbase_mmcnt));
+                                //mismatch->mismatch
+                                beta = 0;
+                                //match->mismatch
+                                gamma = 0;
+                                //mismatch->match
+                                kappa = gweight_onefewermismatch/(L-(currbase_mmcnt));
+                            } else {
+                                alpha = gweight_onefewermismatch/(L-(currbase_mmcnt-1));
+                                //mismatch->mismatch
+                                beta = 0;
+                                //match->mismatch
+                                gamma = 0;
+                                //mismatch->match
+                                kappa = gweight_onefewermismatch/(L-(currbase_mmcnt-1));
+                            }
                         }
                         double weighted_alpha, weighted_beta, weighted_gamma, weighted_kappa;
                         int total_matches;
@@ -1281,7 +1295,9 @@ static void gkmexplainkernel_kernelfunc_batch_single(
         for (k=0; k < da->seqlen; k++) {
             sum2 += persv_explanation[k][(da->seq[k])-1][j];
         }
-        assert (fabs(sum-sum2) < 0.0000001);
+        if (mode!=1 && mode!=2) { 
+            assert (fabs(sum-sum2) < 0.0000001);
+        }
         res[j-start] = sum;
     }
 
