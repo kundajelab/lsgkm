@@ -538,7 +538,7 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
     const BaseMismatchCountForExplanation *curr_matching_bases,
     const int curr_num_matching_bases, int **mmprof,
     double ***persv_explanation, int *tree_lmer,
-    uint8_t one_mismatch_deeper, uint8_t pseudomatches_on)
+    uint8_t one_mismatch_deeper, uint8_t perturbation_eff)
 {
     int i, j, k, h;
     int bid;
@@ -593,19 +593,19 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                             gweight_onemoremismatch = g_weights[currbase_mmcnt+1];
                         }
                         double alpha, beta, gamma, kappa;
-                        if (pseudomatches_on == 0) {
+                        if (perturbation_eff == 1) {
                             //match->match
                             alpha = gweight_now/(L-currbase_mmcnt);
                             //mismatch->mismatch
                             beta = 0;
                             //match->mismatch
-                            gamma = alpha + gweight_onemoremismatch - gweight_now;
+                            gamma = alpha + (gweight_onemoremismatch - gweight_now);
                             //mismatch->match
-                            kappa = alpha + gweight_onefewermismatch - gweight_now;
+                            kappa = alpha + (gweight_onefewermismatch - gweight_now);
                         } else {
                             //match->match
-                            alpha = (gweight_now/(L-currbase_mmcnt)
-                                            + (gweight_onefewermismatch*currbase_mmcnt)/(L-(currbase_mmcnt-1)));
+                            //same as in the perturbation_eff case
+                            alpha = gweight_now/(L-currbase_mmcnt);
                             //mismatch->mismatch
                             beta = 0;
                             //match->mismatch
@@ -704,7 +704,7 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                      daughter_node_index, next_matching_bases,
                      next_num_matching_bases, mmprof,
                      persv_explanation, tree_lmer,
-                     one_mismatch_deeper, pseudomatches_on);
+                     one_mismatch_deeper, perturbation_eff);
                 } 
             }
         }
@@ -1281,9 +1281,7 @@ static void gkmexplainkernel_kernelfunc_batch_single(
         for (k=0; k < da->seqlen; k++) {
             sum2 += persv_explanation[k][(da->seq[k])-1][j];
         }
-        if (mode != 1 && mode != 2) {
-            assert (fabs(sum-sum2) < 0.0000001);
-        }
+        assert (fabs(sum-sum2) < 0.0000001);
         res[j-start] = sum;
     }
 
