@@ -1248,25 +1248,25 @@ static void gkmexplainkernel_kernelfunc_batch_single(
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
-                                         persv_explanation, tree_lmer, 0, 1);
+                                         persv_explanation, tree_lmer, 0, 0);
             break;
         case 2:
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
-                                         persv_explanation, tree_lmer, 1, 1);
+                                         persv_explanation, tree_lmer, 1, 0);
             break;
         case 3:
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
-                                         persv_explanation, tree_lmer, 0, 0);
+                                         persv_explanation, tree_lmer, 0, 1);
             break;
         case 4:
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
-                                         persv_explanation, tree_lmer, 1, 0);
+                                         persv_explanation, tree_lmer, 1, 1);
             break;
         default:
             assert (1==2); //shouldn't be here
