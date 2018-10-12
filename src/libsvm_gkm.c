@@ -1285,9 +1285,9 @@ static void gkmexplainkernel_kernelfunc_batch_single(
         for (k=0; k < da->seqlen; k++) {
             sum2 += persv_explanation[k][(da->seq[k])-1][j];
         }
-        if (mode!=1 && mode!=2) { 
-            assert (fabs(sum-sum2) < 0.0000001);
-        }
+        //if (mode!=1 && mode!=2) { 
+        assert (fabs(sum-sum2) < 0.0000001);
+        //}
         res[j-start] = sum;
     }
 
