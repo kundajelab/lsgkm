@@ -609,23 +609,13 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                         } else {
                             //match->match
                             //same as in the perturbation_eff case
-                            if (currbase_mmcnt == 0) {
-                                alpha = gweight_onefewermismatch/(L-(currbase_mmcnt));
-                                //mismatch->mismatch
-                                beta = 0;
-                                //match->mismatch
-                                gamma = 0;
-                                //mismatch->match
-                                kappa = gweight_onefewermismatch/(L-(currbase_mmcnt));
-                            } else {
-                                alpha = gweight_onefewermismatch/(L-(currbase_mmcnt-1));
-                                //mismatch->mismatch
-                                beta = 0;
-                                //match->mismatch
-                                gamma = 0;
-                                //mismatch->match
-                                kappa = gweight_onefewermismatch/(L-(currbase_mmcnt-1));
-                            }
+                            alpha = gweight_now/(L-(currbase_mmcnt));
+                            //mismatch->mismatch
+                            beta = 0;
+                            //match->mismatch
+                            gamma = 0;
+                            //mismatch->match
+                            kappa = gweight_now/(L-(currbase_mmcnt));
                         }
                         double weighted_alpha, weighted_beta, weighted_gamma, weighted_kappa;
                         int total_matches;
