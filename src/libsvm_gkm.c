@@ -615,7 +615,7 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                             //match->mismatch
                             gamma = 0;
                             //mismatch->match
-                            kappa = gweight_now/(L-(currbase_mmcnt));
+                            kappa = gweight_onefewermismatch/(L-(currbase_mmcnt-));
                         }
                         double weighted_alpha, weighted_beta, weighted_gamma, weighted_kappa;
                         int total_matches;
