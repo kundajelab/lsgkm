@@ -52,6 +52,8 @@ void print_usage_and_exit()
             "                   0 -- importance scores\n"
             "                   1 -- hypothetical importance scores (considering lmers with d mismatches)\n"
             "                   2 -- hypothetical importance scores (considering d+1 mismatches)\n"
+            "                   3 -- perturbation effect estimation (considering lmers with d mismatches)\n"
+            "                   4 -- perturbation effect estimation (considering d+1 mismatches)\n"
             "\n");
     exit(0);
 }
@@ -253,7 +255,7 @@ int main(int argc, char **argv)
             print_usage_and_exit();
     }
 
-    if (mode != 0 && mode != 1 && mode != 2) {
+    if (mode < 0 || mode > 4) {
             fprintf(stderr, "Unknown interpretation mode: %d\n", mode);
             print_usage_and_exit();
     }

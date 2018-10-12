@@ -537,7 +537,8 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
     const int last_seqid, const int depth, const int curr_node_index,
     const BaseMismatchCountForExplanation *curr_matching_bases,
     const int curr_num_matching_bases, int **mmprof,
-    double ***persv_explanation, int *tree_lmer, uint8_t one_mismatch_deeper)
+    double ***persv_explanation, int *tree_lmer,
+    uint8_t one_mismatch_deeper, uint8_t pseudomatches_on)
 {
     int i, j, k, h;
     int bid;
@@ -591,14 +592,27 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                             gweight_now = g_weights[currbase_mmcnt];
                             gweight_onemoremismatch = g_weights[currbase_mmcnt+1];
                         }
-                        //match->match
-                        const double alpha = gweight_now/(L-currbase_mmcnt);
-                        //mismatch->mismatch
-                        const double beta = 0;
-                        //match->mismatch
-                        const double gamma = alpha + gweight_onemoremismatch - gweight_now;
-                        //mismatch->match
-                        const double kappa = alpha + gweight_onefewermismatch - gweight_now;
+                        double alpha, beta, gamma, kappa;
+                        if (pseudomatches_on == 0) {
+                            //match->match
+                            alpha = gweight_now/(L-currbase_mmcnt);
+                            //mismatch->mismatch
+                            beta = 0;
+                            //match->mismatch
+                            gamma = alpha + gweight_onemoremismatch - gweight_now;
+                            //mismatch->match
+                            kappa = alpha + gweight_onefewermismatch - gweight_now;
+                        } else {
+                            //match->match
+                            alpha = (gweight_now/(L-currbase_mmcnt)
+                                            + (gweight_onefewermismatch*currbase_mmcnt)/(L-(currbase_mmcnt-1)));
+                            //mismatch->mismatch
+                            beta = 0;
+                            //match->mismatch
+                            gamma = 0;
+                            //mismatch->match
+                            kappa = gweight_onefewermismatch/(L-(currbase_mmcnt-1));
+                        }
                         double weighted_alpha, weighted_beta, weighted_gamma, weighted_kappa;
                         int total_matches;
                         uint8_t base_then;
@@ -689,7 +703,8 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                     kmertree_dfs_withhypexplanation(tree, last_seqid, depth+1,
                      daughter_node_index, next_matching_bases,
                      next_num_matching_bases, mmprof,
-                     persv_explanation, tree_lmer, one_mismatch_deeper);
+                     persv_explanation, tree_lmer,
+                     one_mismatch_deeper, pseudomatches_on);
                 } 
             }
         }
@@ -1233,13 +1248,25 @@ static void gkmexplainkernel_kernelfunc_batch_single(
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
-                                         persv_explanation, tree_lmer, 0);
+                                         persv_explanation, tree_lmer, 0, 1);
             break;
         case 2:
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
-                                         persv_explanation, tree_lmer, 1);
+                                         persv_explanation, tree_lmer, 1, 1);
+            break;
+        case 3:
+            tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
+            kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
+                                         num_matching_bases, mmprofile,
+                                         persv_explanation, tree_lmer, 0, 0);
+            break;
+        case 4:
+            tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
+            kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
+                                         num_matching_bases, mmprofile,
+                                         persv_explanation, tree_lmer, 1, 0);
             break;
         default:
             assert (1==2); //shouldn't be here
@@ -1254,7 +1281,9 @@ static void gkmexplainkernel_kernelfunc_batch_single(
         for (k=0; k < da->seqlen; k++) {
             sum2 += persv_explanation[k][(da->seq[k])-1][j];
         }
-        assert (fabs(sum-sum2) < 0.0000001);
+        if (mode != 1 && mode != 2) {
+            assert (fabs(sum-sum2) < 0.0000001);
+        }
         res[j-start] = sum;
     }
 
@@ -2034,17 +2063,13 @@ double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, do
     }
 
     //RBF kernel
+    double per_sv_total, diff_from_ref;
     if (g_param->kernel_type == EST_TRUNC_RBF || g_param->kernel_type == EST_TRUNC_PW_RBF || g_param->kernel_type == GKM_RBF) {
         for (j=0; j<g_sv_num; j++) {
             //let the reference be the case where res[j] = 0
+            per_sv_total = res[j];
             res[j] = exp(g_param->gamma*(res[j]-1));
-            double diff_from_ref = res[j] -  exp(g_param->gamma*(-1));
-            //distribute the difference from reference onto the bases
-            //compute the total importance
-            double per_sv_total = 0;
-            for (k=0; k<da->seqlen; k++) {
-                per_sv_total += persv_explanation[k][da->seq[k]-1][j];
-            } 
+            diff_from_ref = res[j] -  exp(g_param->gamma*(-1));
             //distribute diff_from_ref proportionally
             for (k=0; k<da->seqlen; k++) {
                 for (h=0; h<MAX_ALPHABET_SIZE; h++) {
