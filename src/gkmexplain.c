@@ -54,6 +54,7 @@ void print_usage_and_exit()
             "                   2 -- hypothetical importance scores (considering d+1 mismatches)\n"
             "                   3 -- perturbation effect estimation (considering lmers with d mismatches)\n"
             "                   4 -- perturbation effect estimation (considering d+1 mismatches)\n"
+            "                   5 -- score perturbations for only the central position in the region\n"
             "\n");
     exit(0);
 }
@@ -93,8 +94,12 @@ double calculate_score_and_explanation(char *seq,
 
     x.d = gkmkernel_new_object(seq, NULL, 0);
 
-    svm_predict_and_explain_values(model, x, &score, explanation, mode);
-
+    if (mode==5) {
+        svm_predict_and_singlebaseexplain_values(model, x, &score,
+                                                 explanation[0], mode);
+    } else {
+        svm_predict_and_explain_values(model, x, &score, explanation, mode);
+    }
     gkmkernel_delete_object(x.d);
 
     return score;
@@ -126,6 +131,9 @@ void predict_and_explain(FILE *input, FILE *output, int mode)
                 fprintf(output, "%s\t%g\t",sid, score);
                 for (i=0; i<seqlen; i++) {
                     if (i > 0) {
+                        if (mode==5) {
+                            break;
+                        }
                         fprintf(output, ";");
                     }
                     for (j=0; j<MAX_ALPHABET_SIZE; j++) { 
@@ -168,6 +176,9 @@ void predict_and_explain(FILE *input, FILE *output, int mode)
     fprintf(output, "%s\t%g\t",sid, score);
     for (i=0; i<seqlen; i++) {
         if (i > 0) {
+            if (mode==5) {
+                break;
+            }
             fprintf(output, ";");
         }
         for (j=0; j<MAX_ALPHABET_SIZE; j++) { 
@@ -255,7 +266,7 @@ int main(int argc, char **argv)
             print_usage_and_exit();
     }
 
-    if (mode < 0 || mode > 4) {
+    if (mode < 0 || mode > 5) {
             fprintf(stderr, "Unknown interpretation mode: %d\n", mode);
             print_usage_and_exit();
     }

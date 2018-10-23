@@ -870,7 +870,7 @@ static void kmertree_dfs_explainsinglebase(
 
                 if (next_num_matching_bases > 0) {
                     tree_lmer[depth] = bid;
-                    kmertree_dfs_explainsinglebase(tree, last_seqid, depth+1, daughter_node_index, next_matching_bases, next_num_matching_bases, mmprof, tree_lmer, pos_to_explain, singlebase_mmprof);
+                    kmertree_dfs_explainsinglebase(tree, last_seqid, depth+1, daughter_node_index, next_matching_bases, next_num_matching_bases, mmprof, tree_lmer, pos_to_explain, base_at_pos_to_explain, singlebase_mmprof);
                 } 
             }
         }
@@ -1401,7 +1401,6 @@ static void gkmexplainsinglebasekernel_kernelfunc_batch_single(
         for(j=0; j<end; j++) { mmprofile[k][j] = 0; }
     }
 
-
     /* initialize singlebase_mmprof*/
     int ***singlebase_mmprofile = (int ***) malloc(sizeof(int**) * ((size_t) (d+1)));
     for (k=0; k<=d; k++) {
@@ -1413,11 +1412,14 @@ static void gkmexplainsinglebasekernel_kernelfunc_batch_single(
     }
 
     int *tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
-    assert(da->seqlen%2 == 0)
-    int pos_to_explain = (da->seqlen - 1)/2
+    assert(da->seqlen%2 == 0);
+    int pos_to_explain = (da->seqlen - 1)/2;
+    uint8_t base_at_pos_to_explain = da->seq[pos_to_explain]; 
+    
     kmertree_dfs_explainsinglebase(
         tree, end, 0, 0, matching_bases, num_matching_bases, mmprofile,
-        tree_lmer, pos_to_explain, singlebase_mmprofile);
+        tree_lmer, pos_to_explain,
+        base_at_pos_to_explain, singlebase_mmprofile);
 
     for (j=start; j<end; j++) {
         double sum = 0;
@@ -1427,12 +1429,14 @@ static void gkmexplainsinglebasekernel_kernelfunc_batch_single(
         res[j-start] = sum;
     }
 
-    for (j=start; j<end; j++) {
-        double singlebase_sum = 0;
-        for (k=0; k<=d; k++) {
-            sum += (g_weights[k]*mmprofile[k][j]);
+    for (h=0; h<MAX_ALPHABET_SIZE; h++) {
+        for (j=start; j<end; j++) {
+            double sum = 0;
+            for (k=0; k<=d; k++) {
+                sum += (g_weights[k]*singlebase_mmprofile[k][h][j]);
+            }
+            singlebasepersv_explanation[h][j] = sum;
         }
-        res[j-start] = sum;
     }
 
     //free mmprofile
@@ -2269,6 +2273,55 @@ double* gkmkernel_kernelfunc_batch_all(const int a, const int start, const int e
     if (g_param->kernel_type == EST_TRUNC_RBF || g_param->kernel_type == EST_TRUNC_PW_RBF || g_param->kernel_type == GKM_RBF) {
         for (j=0; j<end-start; j++) {
             res[j] = exp(g_param->gamma*(res[j]-1));
+        }
+    }
+
+    gettimeofday(&time_end, NULL);
+    clog_trace(CLOG(LOGGER_ID), "DFS i=%d, start=%d, end=%d (%ld ms)", a, start, end, diff_ms(time_end, time_start));
+
+    return res;
+}
+
+/* calculate multiple kernels WITH EXPLANATION ON SINGLE BASE using precomputed kmertree with all samples */
+double* gkmexplainsinglebasekernel_kernelfunc_batch_sv(
+    const int a, const int start, const int end, double *res,
+    double **singlebasepersv_explanation) 
+{
+    int j,h;
+    const gkm_data *da = g_prob_svm_data[a].d;
+    struct timeval time_start, time_end;
+
+    gettimeofday(&time_start, NULL);
+
+    //initialize result variable
+    for (j=0; j<end-start; j++) { res[j] = 0; }
+
+    gkmexplainsinglebasekernel_kernelfunc_batch_single(
+        da, g_prob_kmertree, start, end, res, singlebasepersv_explanation);
+
+    //normalization
+    double da_sqnorm = da->sqnorm;
+    assert(start==0);
+    for (j=start; j<end; j++) {
+        double denom = (da_sqnorm*g_sv_svm_data[j].d->sqnorm);
+        res[j-start] /= denom;
+        for (h=0; h<MAX_ALPHABET_SIZE; h++) {
+            singlebasepersv_explanation[h][j-start] /= denom;
+        }
+    }
+
+    double per_sv_total, diff_from_ref;
+    //RBF kernel
+    if (g_param->kernel_type == EST_TRUNC_RBF || g_param->kernel_type == EST_TRUNC_PW_RBF || g_param->kernel_type == GKM_RBF) {
+        for (j=0; j<end-start; j++) {
+            per_sv_total = res[j];
+            res[j] = exp(g_param->gamma*(res[j]-1));
+            diff_from_ref = res[j] -  exp(g_param->gamma*(-1));
+            //distribute diff_from_ref proportionally
+            for (h=0; h<MAX_ALPHABET_SIZE; h++) {
+                singlebasepersv_explanation[h][j] = diff_from_ref*(
+                 singlebasepersv_explanation[h][j]/per_sv_total);
+            }
         }
     }
 

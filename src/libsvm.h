@@ -119,6 +119,9 @@ double svm_predict_values(const struct svm_model *model, const union svm_data x,
 double svm_predict_and_explain_values(
     const struct svm_model *model, const union svm_data x,
     double* dec_values, double **explanation, int mode);
+double svm_predict_and_singlebaseexplain_values(
+    const struct svm_model *model, const union svm_data x,
+    double* dec_values, double *explanation);
 double svm_predict(const struct svm_model *model, const union svm_data x);
 double svm_predict_probability(const struct svm_model *model, const union svm_data x, double* prob_estimates);
 

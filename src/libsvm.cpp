@@ -2620,6 +2620,103 @@ double svm_predict_values(const svm_model *model, const svm_data x, double* dec_
     }
 }
 
+double svm_predict_and_singlebaseexplain_values(const svm_model *model,
+    const svm_data x, double* dec_values, double *explanation)
+{
+    int i,j,k;
+
+    int l = model->l;
+    double *kvalue = Malloc(double,l);
+
+    int seqlen = x.d->seqlen;
+
+    //initialize 2d array of per-sv explanation
+    double **singlebasepersv_explanation = (double **) malloc(sizeof(double**) * ((size_t) (MAX_ALPHABET_SIZE))); 
+    for (j=0; j<MAX_ALPHABET_SIZE; j++) {
+        singlebasepersv_explanation[j] = (double *) malloc(sizeof(double) * ((size_t) l));
+        for(k=0; k<l; k++) {
+            singlebasepersv_explanation[j][k] = 0.0;
+        }
+    }
+    //initialize explanation
+    for (j=0; j<MAX_ALPHABET_SIZE; j++) {
+        explanation[j] = 0.0;
+    }
+
+    if(model->param.svm_type == ONE_CLASS ||
+       model->param.svm_type == EPSILON_SVR ||
+       model->param.svm_type == NU_SVR)
+    {
+        assert (1==2); //I don't think this block is executed for gkm-svm
+        //since it isn't set up for one class stuff or regression stuff
+    }
+    else
+    {
+        int nr_class = model->nr_class;
+
+        gkmexplainsinglebasekernel_kernelfunc_batch_sv(x.d, kvalue,
+                                                       singlebasepersv_explanation);
+
+        int *start = Malloc(int,nr_class);
+        start[0] = 0;
+        for(i=1;i<nr_class;i++)
+            start[i] = start[i-1]+model->nSV[i-1];
+
+        int *vote = Malloc(int,nr_class);
+        for(i=0;i<nr_class;i++)
+            vote[i] = 0;
+
+
+        int p=0;
+        for(i=0;i<nr_class;i++)
+            for(int j=i+1;j<nr_class;j++)
+            {
+                double sum = 0;
+                int si = start[i];
+                int sj = start[j];
+                int ci = model->nSV[i];
+                int cj = model->nSV[j];
+                
+                int k,h,g;
+                double *coef1 = model->sv_coef[j-1];
+                double *coef2 = model->sv_coef[i];
+                for(k=0;k<ci;k++)
+                    sum += coef1[si+k] * kvalue[si+k];
+                for(k=0;k<cj;k++)
+                    sum += coef2[sj+k] * kvalue[sj+k];
+                for (g=0; g<MAX_ALPHABET_SIZE; g++) { 
+                    for(k=0;k<ci;k++)
+                        explanation[g] += singlebasepersv_explanation[g][si+k]*coef1[si+k];
+                    for(k=0;k<cj;k++)
+                        explanation[g] += singlebasepersv_explanation[g][sj+k]*coef2[sj+k];
+                }
+                sum -= model->rho[p];
+                dec_values[p] = sum;
+
+                if(dec_values[p] > 0)
+                    ++vote[i];
+                else
+                    ++vote[j];
+                p++;
+            }
+
+        int vote_max_idx = 0;
+        for(i=1;i<nr_class;i++)
+            if(vote[i] > vote[vote_max_idx])
+                vote_max_idx = i;
+
+        free(kvalue);
+        //free per-sv explanation
+        for (j=0; j<MAX_ALPHABET_SIZE; j++) {
+            free(singlebasepersv_explanation[j]);
+        }
+        free(singlebasepersv_explanation);
+        free(start);
+        free(vote);
+        return model->label[vote_max_idx];
+    }
+}
+
 double svm_predict_and_explain_values(const svm_model *model,
     const svm_data x, double* dec_values, double **explanation, int mode)
 {
