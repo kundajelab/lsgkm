@@ -740,6 +740,8 @@ static void kmertree_dfs_explainsinglebase(
     int h, i, j;
     int bid;
 
+    //clog_info(CLOG(LOGGER_ID), "depth %d",depth);
+
     const int d = g_param->d; //for small speed-up
     const int L = g_param->L; //for small speed-up
 
@@ -747,6 +749,7 @@ static void kmertree_dfs_explainsinglebase(
         KmerTreeLeaf *leaf = tree->leaf + (curr_node_index*MAX_ALPHABET_SIZE) - tree->node_count;
         for (bid=1; bid<=MAX_ALPHABET_SIZE; bid++) {
             leaf++;
+            tree_lmer[depth] = bid;
             if (leaf->count > 0) {
                 for (j=0; j<curr_num_matching_bases; j++) {
                     const uint8_t currbase = *curr_matching_bases[j].bid;
@@ -764,6 +767,7 @@ static void kmertree_dfs_explainsinglebase(
                         overlaps_key_base = 0; 
                     } 
                     int currbase_mmcnt = curr_matching_bases[j].mmcnt;
+                    //clog_info(CLOG(LOGGER_ID), "currbase_mmcnt %d",currbase_mmcnt);
                     if (currbase != bid) {
                         currbase_mmcnt += 1; 
                     }
@@ -790,18 +794,21 @@ static void kmertree_dfs_explainsinglebase(
                                 }
                                 if (overlaps_key_base==1) {
                                     for (h=1; h<=MAX_ALPHABET_SIZE; h++) { 
+                                        //clog_info(CLOG(LOGGER_ID), "h %d",h);
+                                        //clog_info(CLOG(LOGGER_ID), "lmer_base_at_offset %d",lmer_base_at_offset);
+                                        //clog_info(CLOG(LOGGER_ID), "base_at_pos_to_explain %d",base_at_pos_to_explain);
                                         //->match
                                         if (h==lmer_base_at_offset) {
                                             if (h==base_at_pos_to_explain) {
                                                 //assert (match_at_key_base==1);
                                                 //match->match
                                                 if (currbase_mmcnt <= d) {
-                                                    singlebase_mmprof_mmcnt[h][data[i].seqid] += (data[i].wt*currbase_wt);
+                                                    singlebase_mmprof_mmcnt[h-1][data[i].seqid] += (data[i].wt*currbase_wt);
                                                 }
                                             } else {
                                                 //mismatch->match
                                                 //assert (match_at_key_base==0);
-                                                singlebase_mmprof_mmcnt_onefewer[h][data[i].seqid] += (data[i].wt*currbase_wt);
+                                                singlebase_mmprof_mmcnt_onefewer[h-1][data[i].seqid] += (data[i].wt*currbase_wt);
                                             }
                                         } else {
                                             //->mismatch
@@ -809,13 +816,13 @@ static void kmertree_dfs_explainsinglebase(
                                                 //assert (match_at_key_base==1);
                                                 //match->mismatch
                                                 if (currbase_mmcnt < d) {
-                                                    singlebase_mmprof_mmcnt_onemore[h][data[i].seqid] += (data[i].wt*currbase_wt);
+                                                    singlebase_mmprof_mmcnt_onemore[h-1][data[i].seqid] += (data[i].wt*currbase_wt);
                                                 }
                                             } else {
                                                 //mismatch->mismatch
                                                 //assert (match_at_key_base==0);
                                                 if (currbase_mmcnt <= d) {
-                                                    singlebase_mmprof_mmcnt[h][data[i].seqid] += (data[i].wt*currbase_wt);
+                                                    singlebase_mmprof_mmcnt[h-1][data[i].seqid] += (data[i].wt*currbase_wt);
                                                 }
                                             }
                                         }
@@ -831,6 +838,7 @@ static void kmertree_dfs_explainsinglebase(
         int daughter_node_index = (curr_node_index*MAX_ALPHABET_SIZE);
         for (bid=1; bid<=MAX_ALPHABET_SIZE; bid++) {
             daughter_node_index++;
+            tree_lmer[depth] = bid;
             if (tree->node[daughter_node_index] > 0) {
                 BaseMismatchCountExplainSingleBase next_matching_bases[MAX_SEQ_LENGTH];
                 int next_num_matching_bases = 0;
@@ -869,7 +877,6 @@ static void kmertree_dfs_explainsinglebase(
                 }
 
                 if (next_num_matching_bases > 0) {
-                    tree_lmer[depth] = bid;
                     kmertree_dfs_explainsinglebase(tree, last_seqid, depth+1, daughter_node_index, next_matching_bases, next_num_matching_bases, mmprof, tree_lmer, pos_to_explain, base_at_pos_to_explain, singlebase_mmprof);
                 } 
             }
@@ -1382,6 +1389,7 @@ static void gkmexplainsinglebasekernel_kernelfunc_batch_single(
     KmerTree *tree, const int start,
     const int end, double *res, double **singlebasepersv_explanation) 
 {
+    clog_info(CLOG(LOGGER_ID), "In gkmexplainsinglebasekernel_kernelfunc_batch_single");
     int h, i, j, k;
     BaseMismatchCountExplainSingleBase matching_bases[MAX_SEQ_LENGTH];
     int num_matching_bases = da->seqlen - g_param->L + 1;
@@ -1416,10 +1424,13 @@ static void gkmexplainsinglebasekernel_kernelfunc_batch_single(
     int pos_to_explain = (da->seqlen - 1)/2;
     uint8_t base_at_pos_to_explain = da->seq[pos_to_explain]; 
     
+    clog_info(CLOG(LOGGER_ID), "Seq length %d", da->seqlen);
+    clog_info(CLOG(LOGGER_ID), "Calling kmertree_dfs_explainsinglebase");
     kmertree_dfs_explainsinglebase(
         tree, end, 0, 0, matching_bases, num_matching_bases, mmprofile,
         tree_lmer, pos_to_explain,
         base_at_pos_to_explain, singlebase_mmprofile);
+    clog_info(CLOG(LOGGER_ID), "Done kmertree_dfs_explainsinglebase");
 
     for (j=start; j<end; j++) {
         double sum = 0;
@@ -1428,6 +1439,8 @@ static void gkmexplainsinglebasekernel_kernelfunc_batch_single(
         }
         res[j-start] = sum;
     }
+
+    clog_info(CLOG(LOGGER_ID), "cp1");
 
     for (h=0; h<MAX_ALPHABET_SIZE; h++) {
         for (j=start; j<end; j++) {
@@ -1439,6 +1452,8 @@ static void gkmexplainsinglebasekernel_kernelfunc_batch_single(
         }
     }
 
+    clog_info(CLOG(LOGGER_ID), "cp2");
+
     //free mmprofile
     for (k=0; k<=d; k++) {
         free(mmprofile[k]);
@@ -1446,7 +1461,7 @@ static void gkmexplainsinglebasekernel_kernelfunc_batch_single(
     free(mmprofile);
 
     /* free singlebase_mmprof*/
-    for (k=0; k<=(d+1); k++) {
+    for (k=0; k<=d; k++) {
         for (h=0; h < MAX_ALPHABET_SIZE; h++) { 
             free(singlebase_mmprofile[k][h]);
         }
@@ -2287,6 +2302,7 @@ double* gkmexplainsinglebasekernel_kernelfunc_batch_sv(
     const gkm_data *da, double *res,
     double **singlebasepersv_explanation) 
 {
+    clog_info(CLOG(LOGGER_ID), "In gkmexplainsinglebasekernel_kernelfunc_batch_sv");
     if (g_sv_kmertree == NULL) {
         clog_error(CLOG(LOGGER_ID), "kmertree for SVs has not been initialized. call gkmkernel_init_sv() first.");
         return NULL;
@@ -2302,6 +2318,7 @@ double* gkmexplainsinglebasekernel_kernelfunc_batch_sv(
 
     gkmexplainsinglebasekernel_kernelfunc_batch_single(
         da, g_sv_kmertree, 0, g_sv_num, res, singlebasepersv_explanation);
+    clog_info(CLOG(LOGGER_ID), "Done gkmexplainsinglebasekernel_kernelfunc_batch_single");
 
     //normalization
     double da_sqnorm = da->sqnorm;
