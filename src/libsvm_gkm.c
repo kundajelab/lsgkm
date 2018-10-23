@@ -68,6 +68,14 @@ typedef struct _BaseMismatchCount {
     int mmcnt;
 } BaseMismatchCount;
 
+typedef struct _BaseMismatchCountExplainSingleBase {
+    uint8_t *bid;
+    uint8_t wt;
+    int mmcnt;
+    int seqpos;
+    //uint8_t match_at_key_base;
+} BaseMismatchCountExplainSingleBase;
+
 typedef struct _BaseMismatchCountForExplanation {
     uint8_t *bid;
     uint8_t wt;
@@ -716,6 +724,160 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
 }
 
 
+static void kmertree_dfs_explainsinglebase(
+    const KmerTree *tree,
+    const int last_seqid,
+    const int depth,
+    const int curr_node_index,
+    const BaseMismatchCountExplainSingleBase *curr_matching_bases,
+    const int curr_num_matching_bases,
+    int **mmprof,
+    int *tree_lmer,
+    const int pos_to_explain,
+    const uint8_t base_at_pos_to_explain,
+    double ***singlebase_mmprof)
+{
+    int i, j;
+    int bid;
+
+    const int d = g_param->d; //for small speed-up
+    const int L = g_param->L; //for small speed-up
+
+    if (depth == tree->depth - 1) {
+        KmerTreeLeaf *leaf = tree->leaf + (curr_node_index*MAX_ALPHABET_SIZE) - tree->node_count;
+        for (bid=1; bid<=MAX_ALPHABET_SIZE; bid++) {
+            leaf++;
+            if (leaf->count > 0) {
+                for (j=0; j<curr_num_matching_bases; j++) {
+                    const uint8_t currbase = *curr_matching_bases[j].bid;
+                    const uint8_t currbase_wt = curr_matching_bases[j].wt;
+                    const uint8_t match_at_key_base = curr_matching_bases[j].match_at_key_base;
+                    const int seqpos  = curr_matching_bases[j].seqpos;
+                    //compute base offset relative to lmer start
+                    const int offset = pos_to_explain - seqpos  
+                    int lmer_base_at_offset;
+                    uint8_t overlaps_key_base;
+                    if ((offset >=0) && (offset < L)) {
+                        overlaps_key_base = 1;
+                        lmer_base_at_offset = tree_lmer[offset]
+                    } else {
+                        overlaps_key_base = 0; 
+                    } 
+                    int currbase_mmcnt = curr_matching_bases[j].mmcnt;
+                    if (currbase != bid) {
+                        currbase_mmcnt += 1; 
+                    }
+                    // matching
+                    const int leaf_cnt = leaf->count;
+                    const KmerTreeLeafData *data = leaf->data;
+                    int *mmprof_mmcnt;
+                    int *singlebase_mmprof_mmcnt_onefewer = singlebase_mmprof[currbase_mmcnt-1];
+                    int *singlebase_mmprof_mmcnt_onemore;
+                    if (currbase_mmcnt <= d) {
+                        mmprof_mmcnt = mmprof[currbase_mmcnt];
+                        singlebase_mmprof_mmcnt = singlebase_mmprof[currbase_mmcnt];
+                    }
+                    if (currbase_mmcnt < d) {
+                        int *singlebase_mmprof_mmcnt_onemore = mmprof[currbase_mmcnt+1];
+                    }
+                    if ((currbase_mmcnt <= d) ||
+                        (currbase_mmcnt <= (d+1) && overlaps_key_base==1)) {
+                        for (i=0; i<leaf_cnt; i++) { 
+                            if (data[i].seqid < last_seqid) {
+                                if (currbase_mmcnt <= d) {
+                                    mmprof_mmcnt[data[i].seqid] += (data[i].wt*currbase_wt); 
+                                }
+                                if (overlaps_key_base==1) {
+                                    for (h=1; h<=MAX_ALPHABET_SIZE; h++) { 
+                                        //->match
+                                        if (h==lmer_base_at_offset) {
+                                            if (h==base_at_pos_to_explain) {
+                                                assert (match_at_key_base==1);
+                                                //match->match
+                                                if (currbase_mmcnt <= d) {
+                                                    singlebase_mmprof_mmcnt[h][data[i].seqid] += (data[i].wt*currbase_wt);
+                                                }
+                                            } else {
+                                                //mismatch->match
+                                                assert (match_at_key_base==0);
+                                                singlebase_mmprof_mmcnt_onefewer[h][data[i].seqid] += (data[i].wt*currbase_wt);
+                                            }
+                                        } else {
+                                            //->mismatch
+                                            if (base_at_pos_to_explain==lmer_base_at_offset) {
+                                                assert (match_at_key_base==1);
+                                                //match->mismatch
+                                                if (currbase_mmcnt < d) {
+                                                    singlebase_mmprof_mmcnt_onemore[h][data[i].seqid] += (data[i].wt*currbase_wt);
+                                                }
+                                            } else {
+                                                //mismatch->mismatch
+                                                assert (match_at_key_base==0);
+                                                if (currbase_mmcnt <= d) {
+                                                    singlebase_mmprof_mmcnt[h][data[i].seqid] += (data[i].wt*currbase_wt);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        int daughter_node_index = (curr_node_index*MAX_ALPHABET_SIZE);
+        for (bid=1; bid<=MAX_ALPHABET_SIZE; bid++) {
+            daughter_node_index++;
+            if (tree->node[daughter_node_index] > 0) {
+                BaseMismatchCountExplainSingleBase next_matching_bases[MAX_SEQ_LENGTH];
+                int next_num_matching_bases = 0;
+
+                for (j=0; j<curr_num_matching_bases; j++) {
+                    uint8_t *currbase_ptr = curr_matching_bases[j].bid;
+                    int currbase_mmcnt = curr_matching_bases[j].mmcnt;
+                    int currbase_seqpos = curr_matching_bases[j].seqpos;
+                    //int currbase_match_at_key_base = curr_matching_bases[j].match_at_key_base;
+                    if (*currbase_ptr == bid) {
+                        // matching
+                        next_matching_bases[next_num_matching_bases].bid = currbase_ptr+1;
+                        next_matching_bases[next_num_matching_bases].wt = curr_matching_bases[j].wt;
+                        next_matching_bases[next_num_matching_bases].mmcnt = currbase_mmcnt;
+                        next_matching_bases[next_num_matching_bases].seqpos = currbase_seqpos;
+                        //if ((currbase_seqpos+depth)==pos_to_explain) {
+                        //    next_matching_bases[next_num_matching_bases].match_at_key_base = 1;
+                        //}
+                        next_num_matching_bases++;
+                    //either the number of mismatches has not exceeded the threshold, or
+                    //the number of mismatches is d and it's a base
+                    //that overlaps the relevant position, meaning a flip to a match
+                    //could make the base relevant
+                    } else if ((currbase_mmcnt < d) || 
+                               ((currbase_mmcnt == d) &&
+                                (pos_to_explain-currbase_seqpos < L) &&
+                                (pos_to_explain >= currbase_seqpos))) {
+                        // non-matching
+                        next_matching_bases[next_num_matching_bases].bid = currbase_ptr+1;
+                        next_matching_bases[next_num_matching_bases].wt = curr_matching_bases[j].wt;
+                        next_matching_bases[next_num_matching_bases].mmcnt = currbase_mmcnt+1;
+                        next_matching_bases[next_num_matching_bases].seqpos = currbase_seqpos;
+                        //next_matching_bases[next_num_matching_bases].match_at_key_base = currbase_match_at_key_base;
+                        next_matching_bases[next_num_matching_bases].base_lmer_match_history = currbase_base_lmer_match_history;
+                        next_num_matching_bases++;
+                    }
+                }
+
+                if (next_num_matching_bases > 0) {
+                    tree_lmer[depth] = bid;
+                    kmertree_dfs_explainsinglebase(tree, last_seqid, depth+1, daughter_node_index, next_matching_bases, next_num_matching_bases, mmprof, tree_lmer, pos_to_explain, singlebase_mmprof);
+                } 
+            }
+        }
+    }
+}
+
+
 static void kmertree_dfs(const KmerTree *tree, const int last_seqid, const int depth, const int curr_node_index, const BaseMismatchCount *curr_matching_bases, const int curr_num_matching_bases, int **mmprof)
 {
     int i, j;
@@ -1215,6 +1377,82 @@ static void gkmkernel_kernelfunc_batch_single(const gkm_data *da, KmerTree *tree
     free(mmprofile);
 }
 
+static void gkmexplainsinglebasekernel_kernelfunc_batch_single(
+    const gkm_data *da,
+    KmerTree *tree, const int start,
+    const int end, double *res, double **singlebasepersv_explanation) 
+{
+    int h, i, j, k;
+    BaseMismatchCountExplainSingleBase matching_bases[MAX_SEQ_LENGTH];
+    int num_matching_bases = da->seqlen - g_param->L + 1;
+    const int d = g_param->d;
+
+    for (i=0; i<num_matching_bases; i++) {
+        matching_bases[i].bid = da->seq + i;
+        matching_bases[i].wt = da->wt[i];
+        matching_bases[i].mmcnt = 0;
+        matching_bases[i].seqpos = i;
+    }
+
+    /* initialize mmprofile*/
+    int **mmprofile = (int **) malloc(sizeof(int*) * ((size_t) (d+1)));
+    for (k=0; k<=d; k++) {
+        mmprofile[k] = (int *) malloc(sizeof(int)* ((size_t) end));
+        for(j=0; j<end; j++) { mmprofile[k][j] = 0; }
+    }
+
+
+    /* initialize singlebase_mmprof*/
+    int ***singlebase_mmprofile = (int ***) malloc(sizeof(int**) * ((size_t) (d+1)));
+    for (k=0; k<=d; k++) {
+        singlebase_mmprofile[k] = (int **) malloc(sizeof(int*) * ((size_t) MAX_ALPHABET_SIZE));
+        for (h=0; h < MAX_ALPHABET_SIZE; h++) { 
+            singlebase_mmprofile[k][h] = (int *) malloc(sizeof(int) * ((size_t) end));
+            for (j=0; j<end; j++) { singlebase_mmprofile[k][h][j] = 0; }
+        }
+    }
+
+    int *tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
+    assert(da->seqlen%2 == 0)
+    int pos_to_explain = (da->seqlen - 1)/2
+    kmertree_dfs_explainsinglebase(
+        tree, end, 0, 0, matching_bases, num_matching_bases, mmprofile,
+        tree_lmer, pos_to_explain, singlebase_mmprofile);
+
+    for (j=start; j<end; j++) {
+        double sum = 0;
+        for (k=0; k<=d; k++) {
+            sum += (g_weights[k]*mmprofile[k][j]);
+        }
+        res[j-start] = sum;
+    }
+
+    for (j=start; j<end; j++) {
+        double singlebase_sum = 0;
+        for (k=0; k<=d; k++) {
+            sum += (g_weights[k]*mmprofile[k][j]);
+        }
+        res[j-start] = sum;
+    }
+
+    //free mmprofile
+    for (k=0; k<=d; k++) {
+        free(mmprofile[k]);
+    }
+    free(mmprofile);
+
+    /* free singlebase_mmprof*/
+    for (k=0; k<=(d+1); k++) {
+        for (h=0; h < MAX_ALPHABET_SIZE; h++) { 
+            free(singlebase_mmprofile[k][h])
+        }
+        free(singlebase_mmprofile[k])
+    }
+    free(singlebase_mmprofile)
+    free(tree_lmer)
+}
+
+
 static void gkmexplainkernel_kernelfunc_batch_single(
     const gkm_data *da,
     KmerTree *tree, const int start, const int end,
@@ -1253,24 +1491,28 @@ static void gkmexplainkernel_kernelfunc_batch_single(
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
                                          persv_explanation, tree_lmer, 0, 0);
+            free(tree_lmer)
             break;
         case 2:
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
                                          persv_explanation, tree_lmer, 1, 0);
+            free(tree_lmer)
             break;
         case 3:
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
                                          persv_explanation, tree_lmer, 0, 1);
+            free(tree_lmer)
             break;
         case 4:
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
                                          persv_explanation, tree_lmer, 1, 1);
+            free(tree_lmer)
             break;
         default:
             assert (1==2); //shouldn't be here
