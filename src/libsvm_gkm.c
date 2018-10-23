@@ -735,9 +735,9 @@ static void kmertree_dfs_explainsinglebase(
     int *tree_lmer,
     const int pos_to_explain,
     const uint8_t base_at_pos_to_explain,
-    double ***singlebase_mmprof)
+    int ***singlebase_mmprof)
 {
-    int i, j;
+    int h, i, j;
     int bid;
 
     const int d = g_param->d; //for small speed-up
@@ -751,15 +751,15 @@ static void kmertree_dfs_explainsinglebase(
                 for (j=0; j<curr_num_matching_bases; j++) {
                     const uint8_t currbase = *curr_matching_bases[j].bid;
                     const uint8_t currbase_wt = curr_matching_bases[j].wt;
-                    const uint8_t match_at_key_base = curr_matching_bases[j].match_at_key_base;
+                    //const uint8_t match_at_key_base = curr_matching_bases[j].match_at_key_base;
                     const int seqpos  = curr_matching_bases[j].seqpos;
                     //compute base offset relative to lmer start
-                    const int offset = pos_to_explain - seqpos  
+                    const int offset = pos_to_explain - seqpos;
                     int lmer_base_at_offset;
                     uint8_t overlaps_key_base;
                     if ((offset >=0) && (offset < L)) {
                         overlaps_key_base = 1;
-                        lmer_base_at_offset = tree_lmer[offset]
+                        lmer_base_at_offset = tree_lmer[offset];
                     } else {
                         overlaps_key_base = 0; 
                     } 
@@ -771,14 +771,15 @@ static void kmertree_dfs_explainsinglebase(
                     const int leaf_cnt = leaf->count;
                     const KmerTreeLeafData *data = leaf->data;
                     int *mmprof_mmcnt;
-                    int *singlebase_mmprof_mmcnt_onefewer = singlebase_mmprof[currbase_mmcnt-1];
-                    int *singlebase_mmprof_mmcnt_onemore;
+                    int **singlebase_mmprof_mmcnt_onefewer = singlebase_mmprof[currbase_mmcnt-1];
+                    int **singlebase_mmprof_mmcnt;
+                    int **singlebase_mmprof_mmcnt_onemore;
                     if (currbase_mmcnt <= d) {
                         mmprof_mmcnt = mmprof[currbase_mmcnt];
                         singlebase_mmprof_mmcnt = singlebase_mmprof[currbase_mmcnt];
                     }
                     if (currbase_mmcnt < d) {
-                        int *singlebase_mmprof_mmcnt_onemore = mmprof[currbase_mmcnt+1];
+                        singlebase_mmprof_mmcnt_onemore = singlebase_mmprof[currbase_mmcnt+1];
                     }
                     if ((currbase_mmcnt <= d) ||
                         (currbase_mmcnt <= (d+1) && overlaps_key_base==1)) {
@@ -792,27 +793,27 @@ static void kmertree_dfs_explainsinglebase(
                                         //->match
                                         if (h==lmer_base_at_offset) {
                                             if (h==base_at_pos_to_explain) {
-                                                assert (match_at_key_base==1);
+                                                //assert (match_at_key_base==1);
                                                 //match->match
                                                 if (currbase_mmcnt <= d) {
                                                     singlebase_mmprof_mmcnt[h][data[i].seqid] += (data[i].wt*currbase_wt);
                                                 }
                                             } else {
                                                 //mismatch->match
-                                                assert (match_at_key_base==0);
+                                                //assert (match_at_key_base==0);
                                                 singlebase_mmprof_mmcnt_onefewer[h][data[i].seqid] += (data[i].wt*currbase_wt);
                                             }
                                         } else {
                                             //->mismatch
                                             if (base_at_pos_to_explain==lmer_base_at_offset) {
-                                                assert (match_at_key_base==1);
+                                                //assert (match_at_key_base==1);
                                                 //match->mismatch
                                                 if (currbase_mmcnt < d) {
                                                     singlebase_mmprof_mmcnt_onemore[h][data[i].seqid] += (data[i].wt*currbase_wt);
                                                 }
                                             } else {
                                                 //mismatch->mismatch
-                                                assert (match_at_key_base==0);
+                                                //assert (match_at_key_base==0);
                                                 if (currbase_mmcnt <= d) {
                                                     singlebase_mmprof_mmcnt[h][data[i].seqid] += (data[i].wt*currbase_wt);
                                                 }
@@ -863,7 +864,6 @@ static void kmertree_dfs_explainsinglebase(
                         next_matching_bases[next_num_matching_bases].mmcnt = currbase_mmcnt+1;
                         next_matching_bases[next_num_matching_bases].seqpos = currbase_seqpos;
                         //next_matching_bases[next_num_matching_bases].match_at_key_base = currbase_match_at_key_base;
-                        next_matching_bases[next_num_matching_bases].base_lmer_match_history = currbase_base_lmer_match_history;
                         next_num_matching_bases++;
                     }
                 }
@@ -1448,12 +1448,12 @@ static void gkmexplainsinglebasekernel_kernelfunc_batch_single(
     /* free singlebase_mmprof*/
     for (k=0; k<=(d+1); k++) {
         for (h=0; h < MAX_ALPHABET_SIZE; h++) { 
-            free(singlebase_mmprofile[k][h])
+            free(singlebase_mmprofile[k][h]);
         }
-        free(singlebase_mmprofile[k])
+        free(singlebase_mmprofile[k]);
     }
-    free(singlebase_mmprofile)
-    free(tree_lmer)
+    free(singlebase_mmprofile);
+    free(tree_lmer);
 }
 
 
@@ -1495,28 +1495,28 @@ static void gkmexplainkernel_kernelfunc_batch_single(
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
                                          persv_explanation, tree_lmer, 0, 0);
-            free(tree_lmer)
+            free(tree_lmer);
             break;
         case 2:
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
                                          persv_explanation, tree_lmer, 1, 0);
-            free(tree_lmer)
+            free(tree_lmer);
             break;
         case 3:
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
                                          persv_explanation, tree_lmer, 0, 1);
-            free(tree_lmer)
+            free(tree_lmer);
             break;
         case 4:
             tree_lmer = (int *) malloc(sizeof(int) * ((size_t) g_param->L ));
             kmertree_dfs_withhypexplanation(tree, end, 0, 0, matching_bases,
                                          num_matching_bases, mmprofile,
                                          persv_explanation, tree_lmer, 1, 1);
-            free(tree_lmer)
+            free(tree_lmer);
             break;
         default:
             assert (1==2); //shouldn't be here
@@ -2284,36 +2284,39 @@ double* gkmkernel_kernelfunc_batch_all(const int a, const int start, const int e
 
 /* calculate multiple kernels WITH EXPLANATION ON SINGLE BASE using precomputed kmertree with all samples */
 double* gkmexplainsinglebasekernel_kernelfunc_batch_sv(
-    const int a, const int start, const int end, double *res,
+    const gkm_data *da, double *res,
     double **singlebasepersv_explanation) 
 {
-    int j,h;
-    const gkm_data *da = g_prob_svm_data[a].d;
+    if (g_sv_kmertree == NULL) {
+        clog_error(CLOG(LOGGER_ID), "kmertree for SVs has not been initialized. call gkmkernel_init_sv() first.");
+        return NULL;
+    }
+
+    int h,j;
     struct timeval time_start, time_end;
 
     gettimeofday(&time_start, NULL);
 
-    //initialize result variable
-    for (j=0; j<end-start; j++) { res[j] = 0; }
+    //initialize results
+    for (j=0; j<g_sv_num; j++) { res[j] = 0; }
 
     gkmexplainsinglebasekernel_kernelfunc_batch_single(
-        da, g_prob_kmertree, start, end, res, singlebasepersv_explanation);
+        da, g_sv_kmertree, 0, g_sv_num, res, singlebasepersv_explanation);
 
     //normalization
     double da_sqnorm = da->sqnorm;
-    assert(start==0);
-    for (j=start; j<end; j++) {
+    for (j=0; j<g_sv_num; j++) {
         double denom = (da_sqnorm*g_sv_svm_data[j].d->sqnorm);
-        res[j-start] /= denom;
+        res[j] /= denom;
         for (h=0; h<MAX_ALPHABET_SIZE; h++) {
-            singlebasepersv_explanation[h][j-start] /= denom;
+            singlebasepersv_explanation[h][j] /= denom;
         }
     }
 
     double per_sv_total, diff_from_ref;
     //RBF kernel
     if (g_param->kernel_type == EST_TRUNC_RBF || g_param->kernel_type == EST_TRUNC_PW_RBF || g_param->kernel_type == GKM_RBF) {
-        for (j=0; j<end-start; j++) {
+        for (j=0; j<g_sv_num; j++) {
             per_sv_total = res[j];
             res[j] = exp(g_param->gamma*(res[j]-1));
             diff_from_ref = res[j] -  exp(g_param->gamma*(-1));
@@ -2326,10 +2329,12 @@ double* gkmexplainsinglebasekernel_kernelfunc_batch_sv(
     }
 
     gettimeofday(&time_end, NULL);
-    clog_trace(CLOG(LOGGER_ID), "DFS i=%d, start=%d, end=%d (%ld ms)", a, start, end, diff_ms(time_end, time_start));
+    clog_trace(CLOG(LOGGER_ID), "DFS nSVs=%d (%ld ms)", g_sv_num, diff_ms(time_end, time_start));
 
     return res;
 }
+
+
 
 /* calculate multiple kernels WITH EXPLANATION using precomputed kmertree with SVs */
 double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, double ***persv_explanation, int mode) 

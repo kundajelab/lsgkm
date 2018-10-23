@@ -2628,8 +2628,6 @@ double svm_predict_and_singlebaseexplain_values(const svm_model *model,
     int l = model->l;
     double *kvalue = Malloc(double,l);
 
-    int seqlen = x.d->seqlen;
-
     //initialize 2d array of per-sv explanation
     double **singlebasepersv_explanation = (double **) malloc(sizeof(double**) * ((size_t) (MAX_ALPHABET_SIZE))); 
     for (j=0; j<MAX_ALPHABET_SIZE; j++) {
@@ -2656,6 +2654,8 @@ double svm_predict_and_singlebaseexplain_values(const svm_model *model,
 
         gkmexplainsinglebasekernel_kernelfunc_batch_sv(x.d, kvalue,
                                                        singlebasepersv_explanation);
+        //gkmexplainkernel_kernelfunc_batch_sv(x.d, kvalue,
+        //                                     singlebasepersv_explanation, 0);
 
         int *start = Malloc(int,nr_class);
         start[0] = 0;
@@ -2677,7 +2677,7 @@ double svm_predict_and_singlebaseexplain_values(const svm_model *model,
                 int ci = model->nSV[i];
                 int cj = model->nSV[j];
                 
-                int k,h,g;
+                int k,g;
                 double *coef1 = model->sv_coef[j-1];
                 double *coef2 = model->sv_coef[i];
                 for(k=0;k<ci;k++)

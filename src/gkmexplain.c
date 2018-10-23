@@ -96,7 +96,7 @@ double calculate_score_and_explanation(char *seq,
 
     if (mode==5) {
         svm_predict_and_singlebaseexplain_values(model, x, &score,
-                                                 explanation[0], mode);
+                                                 explanation[0]);
     } else {
         svm_predict_and_explain_values(model, x, &score, explanation, mode);
     }
