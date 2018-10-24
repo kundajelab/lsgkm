@@ -2340,8 +2340,12 @@ double* gkmexplainsinglebasekernel_kernelfunc_batch_sv(
             diff_from_ref = res[j] -  exp(g_param->gamma*(-1));
             //distribute diff_from_ref proportionally
             for (h=0; h<MAX_ALPHABET_SIZE; h++) {
-                singlebasepersv_explanation[h][j] = diff_from_ref*(
-                 singlebasepersv_explanation[h][j]/per_sv_total);
+                if (per_sv_total > 0) {
+                    singlebasepersv_explanation[h][j] = diff_from_ref*(
+                     singlebasepersv_explanation[h][j]/per_sv_total);
+                } else {
+                    singlebasepersv_explanation[h][j] = 0;
+                }
             }
         }
     }
@@ -2395,8 +2399,12 @@ double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, do
             //distribute diff_from_ref proportionally
             for (k=0; k<da->seqlen; k++) {
                 for (h=0; h<MAX_ALPHABET_SIZE; h++) {
-                    persv_explanation[k][h][j] = diff_from_ref*(
-                     persv_explanation[k][h][j]/per_sv_total);
+                    if (per_sv_total > 0) {
+                        persv_explanation[k][h][j] = diff_from_ref*(
+                         persv_explanation[k][h][j]/per_sv_total);
+                    } else {
+                        persv_explanation[k][h][j] = 0; 
+                    }
                 }
             } 
         }
