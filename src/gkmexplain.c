@@ -146,6 +146,7 @@ void predict_and_explain(FILE *input, FILE *output, int mode)
                 fprintf(output, "\n");
                 if ((iseq + 1) % 100 == 0) {
                     clog_info(CLOG(LOGGER_ID), "%d scored", iseq+1);
+                    fflush(output);
                 }
             }
             ++iseq;
