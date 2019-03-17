@@ -1,4 +1,4 @@
-Modified by Avanti Shrikumar to add in an RBF kernel that acts on the original gapped kmer kernel, rather than on the truncated l-mer estimates.
+Modified by Avanti Shrikumar to add in GkmExplain explanation capabilities.
 
 ## LS-GKM: A new gkm-SVM software for large-scale datasets
 
