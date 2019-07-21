@@ -424,7 +424,32 @@ static void kmertree_delete_sequence(const KmerTree *tree, int seqid, const gkm_
 }
 */
 
-
+/*
+--Av Shrikumar documenting stuff--
+This function is a modification of kmertree_dfs
+Arguments:
+tree: a structure that stores, at its leaves, information on the support
+    vectors that have a match to the kmer specified by the leaf.
+    This tree will be traversed in a depth-first manner (so AAAA, AAAC, ...). 
+last_seqid: the number of support vectors. Is not modified from one
+    call to the next.
+depth: The current depth in the kmertree
+curr_node_index: the index of the node in the kmertree that you are looking at 
+curr_matching_bases: an array that represents the L-mers in the input sequence
+    for which the number of mismatches to the kmer specified so-far in the
+    kmer-tree traversal has not exceeded the max number of mismatches d 
+mmprof: has dimensions (d+1) x (number of support vectors). d is the
+    maximum possible number of mismatches. mmprof[i][j] stores the total
+    weight of the lmers in SV j that had i mismatches with lmers
+    in the input sequence.
+persv_explanation: has dimensions
+    (length of input sequence x MAX_ALPHABET_SIZE x number of SVs). By the
+    end of the dfs traversal, sum(persv_explanation[i][:][j]) will store the
+    contribution of position i in the input sequence to the gkm dot
+    product with support vector j. In this particular function,
+    persv_explanation[i][k][j] will be zero if k is not the same
+    as the base in the input sequence.
+*/
 static void kmertree_dfs_withexplanation(const KmerTree *tree,
     const int last_seqid, const int depth, const int curr_node_index,
     const BaseMismatchCountForExplanation *curr_matching_bases,
@@ -437,43 +462,125 @@ static void kmertree_dfs_withexplanation(const KmerTree *tree,
     const int d = g_param->d; //for small speed-up
     const int L = g_param->L;
 
-
+    //If you are one level above the very bottom of the tree
+    // (i.e. curr_node_index specifies the first (L-1) bases of the L-mer)...
     if (depth == tree->depth - 1) {
+        //Retrieve the index corresponding to the parent of the
+        // leaf nodes...not entirely sure about the indexing
+        // logic here but it's based on the pre-existing code
         KmerTreeLeaf *leaf = tree->leaf + (curr_node_index*MAX_ALPHABET_SIZE) - tree->node_count;
+        //Iterate over the possible leaves
         for (bid=1; bid<=MAX_ALPHABET_SIZE; bid++) {
             leaf++;
+            //If the number of SVs that contain a match for this kmer is 
+            // more than 0...
             if (leaf->count > 0) {
+                //iterate over all the l-mers in the input sequence that
+                // survived the dfs traversal (these are all l-mers that had
+                // no more than d mismatches to the first L-1 bases of the
+                // L-mer 
                 for (j=0; j<curr_num_matching_bases; j++) {
+                    //currbase stores what the Lth base in the L-mer
+                    // from the input sequence is
                     const uint8_t currbase = *curr_matching_bases[j].bid;
+                    //currbase_wt stores the weight associated with the L-mer's
+                    // position in th einput sequence
                     const uint8_t currbase_wt = curr_matching_bases[j].wt;
+                    //currbase_mmcnt stores the number of mismatches between
+                    // the first (L-1) positions in this L-mer and the
+                    // first L-1 positions of the kmer specified by the
+                    // current node in the kmer tree dfs 
                     const int currbase_mmcnt = curr_matching_bases[j].mmcnt;
+                    //seqpos stores the position of this L-mer in the
+                    // input sequence
                     const int seqpos = curr_matching_bases[j].seqpos;
+                    //currbase_base_lmer_match_history stores exactly which
+                    // positions in the first (L-1) positions of the l-mer
+                    // were matches and which were mismatches
                     const uint8_t *currbase_base_lmer_match_history = curr_matching_bases[j].base_lmer_match_history;
+                    //If the Lth base of the L-mer is a match to this leaf node...
                     if (currbase == bid) {
-                        // matching
+                        //leaf_cnt is the num of SVs that had this leaf's lmer
                         const int leaf_cnt = leaf->count;
+                        //Get other data assicated with the SVs that
+                        // contained the lmers specified by this leaf node
+                        //data[i].seqid returns the id of the ith SV that
+                        // had a match to this leaf's lmer.
+                        //data[i].wt returns the total weight of lmers in the
+                        // data[i].seqid SV that match the current leaf's lmer 
                         const KmerTreeLeafData *data = leaf->data;
+                        //get the mismatch count vector for the current
+                        // number of mismatches. mmprof_mmcnt has length
+                        // equal to the number of support vectors. It is meant
+                        // to store the total weight of the kmers in each
+                        // support vector that had currbase_mmcnt
+                        // mismatches to the input sequence. 
                         int *mmprof_mmcnt = mmprof[currbase_mmcnt];
+                        //alpha represents the contribution from each matching
+                        // position in the L-mer from the input sequence. 
+                        // this contribution is going to be
+                        // "contribution of L-mer"/"num of matching positions"
+                        //g_weights[currbase_mmcnt] returns the contribution
+                        // of a SINGLE pair of l-mers that have
+                        // currbase_mmcnt mismatches. 
                         double alpha = g_weights[currbase_mmcnt]/(L-currbase_mmcnt);
+                        //Iterate over each SV that contained this leaf's lmer
                         for (i=0; i<leaf_cnt; i++) { 
+                            //Normally last_seqid will just be the last SV
+                            // so this line is a bit redundant. I guess
+                            // it can be used if the user wants to truncate
+                            // the number of SV's to consider?
                             if (data[i].seqid < last_seqid) {
+                                //upweight alpha by both the weight of
+                                // the lmer in the input sequence as well
+                                // as the total weight of lmers in the SV
                                 double weighted_alpha = alpha*(data[i].wt*currbase_wt);
+                                //total_matches is used as a sanity check
                                 int total_matches = 0;
+                                //Iterate over the previous positions in
+                                // the l-mer from the input sequence
                                 for (k=0; k<L; k++) {
+                                    //retrieve the base at the kth position
+                                    // in the l-mer from the input sequence
+                                    //(k goes from 0 to L-1; when k=L-1,
+                                    // base_then will be the same as
+                                    // currbase) 
                                     uint8_t base_then = *(curr_matching_bases[j].bid - ((L-1)-k));
+                                    //if the kth base in the lmer is a match, increment the contribution score at
+                                    // that base. Note that we know from the control flow that the L-1th base
+                                    // is a match.
                                     if ((currbase_base_lmer_match_history[k] == 1) || (k==L-1)) {
                                         persv_explanation[seqpos+k][base_then-1][data[i].seqid] += weighted_alpha;
                                         total_matches += 1;
                                     }
                                 } 
+                                //sanity check
                                 assert (total_matches==(L-currbase_mmcnt));
+                                //Increment the mismatch profile for this SV
+                                // (data[i].seqid is the SV)
                                 mmprof_mmcnt[data[i].seqid] += (data[i].wt*currbase_wt); 
                             }
                         }
                     } else if (currbase_mmcnt < d) {
-                        // non-matching
+                        //similar logic, but for the case where the Lth base
+                        // is a mismatch, yet the total number of mismatches
+                        // (including the mismatch at the current base)
+                        // is <= d
+                        //Note that if the mismatch at the Lth base
+                        // pushes the total
+                        // number of mismatches over d, this code block
+                        // won't be executed.
                         const int leaf_cnt = leaf->count;
                         const KmerTreeLeafData *data = leaf->data;
+                        //currbase_mmcnt+1 is in the code below instead of
+                        // just currbase because the
+                        // Lth base is a mismatch, yet currbase_mmcnt has
+                        // not been incremeneted.
+                        //I am not sure why the author of kmertree_dfs (on
+                        // which this code is based) did not
+                        // increment currbase at the beginning of this code
+                        // block, but I assume there was a good reason, so
+                        // I am mimicking what was done there.
                         int *mmprof_mmcnt = mmprof[currbase_mmcnt+1];
                         double alpha = g_weights[(currbase_mmcnt+1)]/(L-(currbase_mmcnt+1));
                         for (i=0; i<leaf_cnt; i++) { 
@@ -482,6 +589,9 @@ static void kmertree_dfs_withexplanation(const KmerTree *tree,
                                 int total_matches = 0;
                                 for (k=0; k<L; k++) {
                                     uint8_t base_then = *(curr_matching_bases[j].bid - ((L-1)-k));
+                                    //if the kth base in the lmer is a match, increment the contribution score at
+                                    // that base. Note that we know from the control flow that the L-1th base
+                                    // is a mismatch.
                                     if ((currbase_base_lmer_match_history[k] == 1) && (k<(L-1))) {
                                         persv_explanation[seqpos+k][base_then-1][data[i].seqid] += weighted_alpha;
                                         total_matches += 1;
@@ -495,30 +605,67 @@ static void kmertree_dfs_withexplanation(const KmerTree *tree,
                 }
             }
         }
+    //If not yet at the base of the tree...
     } else {
+        //create a variable to store the index of the daughter
         int daughter_node_index = (curr_node_index*MAX_ALPHABET_SIZE);
+        //iterate over all possible daughters of this node
         for (bid=1; bid<=MAX_ALPHABET_SIZE; bid++) {
             daughter_node_index++;
+            //If there exist SVs that have l-mers where the first
+            // (depth+1) positions match the prefix specified by the current
+            // node in the kmer tree, continue with the recursion.
+            // Otherwise don't bother recursing further down this branch
+            // of the kmer tree. 
             if (tree->node[daughter_node_index] > 0) {
+                //If we are going to recurse further, ready the inputs
+                // for the recursion. The inputs to the next level of
+                // recursion will contain information on
+                // all lmers in the input sequence that have no more than
+                // d mismatches with the lmer prefix specified thus far
+                // by the current node in the kmer tree. Call these
+                // the 'surviving' input lmers. 
+                //Instantiate an array to store information
+                // on the surviving input lmers for the next recursion level 
                 BaseMismatchCountForExplanation next_matching_bases[MAX_SEQ_LENGTH];
+                //Instantiate a variable to store the total number of
+                // surviving input lmers for the next recursion level
                 int next_num_matching_bases = 0;
-
+                //Iterate over the current list of surviving lmers
                 for (j=0; j<curr_num_matching_bases; j++) {
+                    //currbase_ptr is a pointer to the base at position "depth+1" in the input lmer
                     uint8_t *currbase_ptr = curr_matching_bases[j].bid;
+                    //currbase_mmcnt stores the total number of mismatches that have been seen
+                    // so far by this input lmer
                     int currbase_mmcnt = curr_matching_bases[j].mmcnt;
+                    //currbase_seqpos is the position of the lmer in the input sequence. This
+                    // will not change with recursion depth.
                     int currbase_seqpos = curr_matching_bases[j].seqpos;
                     uint8_t *currbase_base_lmer_match_history = curr_matching_bases[j].base_lmer_match_history;
+                    //If the base at position "depth+1" in the input lmer is a match to the base
+                    // specified by this daughter node
                     if (*currbase_ptr == bid) {
-                        // matching
+                        //record this surviving lmer in next_matching_bases, makng the appropriate
+                        // modifications.
+                        //The base pointer is shifted to point to the "depth+2" position in the lmer
                         next_matching_bases[next_num_matching_bases].bid = currbase_ptr+1;
+                        //wt stands for "weight". The lmer weight does not change with recursion depth.
                         next_matching_bases[next_num_matching_bases].wt = curr_matching_bases[j].wt;
+                        //the number of mismatches seen so far is unchanged
                         next_matching_bases[next_num_matching_bases].mmcnt = currbase_mmcnt;
                         next_matching_bases[next_num_matching_bases].seqpos = currbase_seqpos;
+                        //record this position as being a "match" for the lmer in the match_history object
                         currbase_base_lmer_match_history[depth] = 1;
                         next_matching_bases[next_num_matching_bases].base_lmer_match_history = currbase_base_lmer_match_history;
+                        //increment the running total of the number of survivng input l-mers
                         next_num_matching_bases++;
+                    //If the base at position "depth+1" in the input lmer is not a match to
+                    // the base specified by this daughter node, then the only way this lmer
+                    // will be included in the next layer of recursion is if the number of
+                    // mismatches seen so far is less than d
                     } else if (currbase_mmcnt < d) {
-                        // non-matching
+                        //as before, except this time currbase_mmcnt is incremented and
+                        // currbase_base_lmer_match_history reflects the mismatch
                         next_matching_bases[next_num_matching_bases].bid = currbase_ptr+1;
                         next_matching_bases[next_num_matching_bases].wt = curr_matching_bases[j].wt;
                         next_matching_bases[next_num_matching_bases].mmcnt = currbase_mmcnt+1;
@@ -529,6 +676,8 @@ static void kmertree_dfs_withexplanation(const KmerTree *tree,
                     }
                 }
 
+                //If there were some surviving input lmers, continue with
+                // the recursion
                 if (next_num_matching_bases > 0) {
                     kmertree_dfs_withexplanation(tree, last_seqid, depth+1,
                      daughter_node_index, next_matching_bases,
@@ -541,6 +690,16 @@ static void kmertree_dfs_withexplanation(const KmerTree *tree,
 }
 
 
+//See documentation/comments on kmertree_dfs_withexplanation
+//persv_explanation[i][j][k] is intended to store the hypothetical contrib
+// of position i, base j to the gkmer dot product with support vector k
+//tree_lmer records the lmer specified so far by the kmer tree dfs traversal
+//The one_mismatch_deeper parameter determines whether, during kmer tree dfs
+// traversal, we retain lmers that have d+1 mismatches, since they may
+// still have hypothetical contributions in the case where a mismatch
+// is changed to a match.
+//The perturbation_eff parameter determines whether we are computing
+// perturbation effect scores rather than hypothetical scores.
 static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
     const int last_seqid, const int depth, const int curr_node_index,
     const BaseMismatchCountForExplanation *curr_matching_bases,
@@ -637,8 +796,6 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                                 weighted_beta = to_weight*beta;
                                 weighted_gamma = to_weight*gamma;
                                 weighted_kappa = to_weight*kappa;
-                                //if a mutation would induce an additional mismatch or one less mismatch,
-                                // it should inherit the total delta in score
                                 total_matches = 0;
                                 for (k=0; k<L; k++) {
                                     base_then = *(curr_matching_bases[j].bid - ((L-1)-k));
@@ -658,7 +815,7 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
                                                 persv_explanation[seqpos+k][h-1][data[i].seqid] += weighted_gamma;
                                             }
                                         } else {
-                                        //mismatch
+                                        //mismatch->
                                             assert (currbase_base_lmer_match_history[k] == 0);
                                             if (h==tree_lmer_base_then) {
                                                 //mismatch->match
@@ -730,6 +887,18 @@ static void kmertree_dfs_withhypexplanation(const KmerTree *tree,
 }
 
 
+//This function is for computing mutation impact scores at a single base,
+// provided mostly as a faster alternative to kmertree_dfs_withhypexplanation,
+// when you don't need scores on all the bases.
+//pos_to_explain stores the index in the sequence that needs explanation
+//base_at_pos_to_explain stores the original base at pos_to_explain
+//singlebase_mmprof has dimensions d x MAX_ALPHABET_SIZE x num_svs, where
+// d is the maximum number of allowed mismatches. singlebase_mmprof[:][i][:]
+// records how mmprof would change if base_at_pos_to_explain were mutated
+// to the base represented by i. The weights associated with a certain
+// number of mismatches (stored in g_weights) can be applied later to derive
+// singlebasepersv_explanation, as is done in
+// gkmexplainsinglebasekernel_kernelfunc_batch_single
 static void kmertree_dfs_explainsinglebase(
     const KmerTree *tree,
     const int last_seqid,
@@ -796,17 +965,13 @@ static void kmertree_dfs_explainsinglebase(
                                     mmprof_mmcnt[data[i].seqid] += (data[i].wt*currbase_wt); 
                                 }
                                 if (overlaps_key_base==1) {
+                                    //Note that h is one-indexed here; thus, when using it to
+                                    // index into singlebase_mmprof_mmcnt, we must subtract 1
                                     for (h=1; h<=MAX_ALPHABET_SIZE; h++) { 
                                         //->match
                                         if (h==lmer_base_at_offset) {
                                             if (h==base_at_pos_to_explain) {
-                                                //assert (match_at_key_base==1);
-                                                //match->match
-                                                /**
-                                                if (currbase_mmcnt <= d) {
-                                                    singlebase_mmprof_mmcnt[h-1][data[i].seqid] += (data[i].wt*currbase_wt);
-                                                }
-                                                **/
+                                                //Nothing happens when you mutate something to itself.
                                             } else {
                                                 //mismatch->match
                                                 //lose this
@@ -830,11 +995,7 @@ static void kmertree_dfs_explainsinglebase(
                                                 }
                                             } else {
                                                 //mismatch->mismatch
-                                                /**
-                                                if (currbase_mmcnt <= d) {
-                                                    singlebase_mmprof_mmcnt[h-1][data[i].seqid] += (data[i].wt*currbase_wt);
-                                                }
-                                                **/
+                                                //Nothing happens when you exchange a mismatch for another mismatch
                                             }
                                         }
                                     }
