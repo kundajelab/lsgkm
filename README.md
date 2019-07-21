@@ -19,7 +19,7 @@ gkmexplain provides functionality for explaining the predictions made by a lsgkm
 
 *Please cite the following paper if you use gkmexplain in your research:*
 
-* To be updated when paper is online. For now, please refer to the repository https://github.com/kundajelab/gkmexplain
+* Shrikumar, A.\*†, Prakash, E.†, Kundaje, A*. GkmExplain: fast and accurate interpretation of nonlinear gapped k-mer SVMs. Bioinformatics, Volume 35, Issue 14, July 2019, Pages i173–i182 (2019). doi:10.1093/bioinformatics/btz322 *\* Co-corresponding authors* *† Co-first authors*. Please refer to https://github.com/kundajelab/gkmexplain for code to replicate the analysis in the paper.
 
 ### Installation
 
