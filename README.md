@@ -152,6 +152,20 @@ Here, you will try to score the positive and the negative test sequences. Type:
     $ ../bin/gkmpredict wgEncodeSydhTfbsGm12878Nfe2hStdAlnRep0.test.fa wgEncodeSydhTfbsGm12878Nfe2hStdAlnRep0.model.txt test_gkmpredict.txt
     $ ../bin/gkmpredict wgEncodeSydhTfbsGm12878Nfe2hStdAlnRep0.neg.test.fa wgEncodeSydhTfbsGm12878Nfe2hStdAlnRep0.model.txt test_gkmpredict.neg.txt
 
+#### Evaluating predictions
+
+You may evaluate the model predictions as follows:
+
+    $ python scripts/lsgkm_eval.py -p test_gkmpredict.txt -n test_gkmpredict.neg.txt  
+
+This will output metrics such as accuracy (at threshold 0), AUROC and AUPRC. The threshold for accuracy can be changed with the `-t` flag.
+
+If you wish to generate a simple GC% baseline, you can run:
+
+    $ python scripts/gc_predictor.py -fa wgEncodeSydhTfbsGm12878Nfe2hStdAlnRep0.test.fa -o test_gc_content.txt 
+    $ python scripts/gc_predictor.py -fa wgEncodeSydhTfbsGm12878Nfe2hStdAlnRep0.neg.test.fa -o test_gc_content.neg.txt
+
+To compute evaluation metrics, you may use the same commands as above.
 
 #### Explaining predictions with gkmexplain
 
