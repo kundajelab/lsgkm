@@ -216,4 +216,4 @@ available from our deltasvm website.
 #### Contact info
 
 Please email Dongwon Lee (dwlee AT jhu DOT edu) if you have any questions about lsgkm.
-Please contact Avanti Shrikumar (avanti dot shrikumar at gmail) if you have questions about gkmexplain.
+Please contact Avanti Shrikumar (avanti dot shrikumar at gmail) and Anshul Kundaje (anshul@kundaje.net) if you have questions about gkmexplain.
