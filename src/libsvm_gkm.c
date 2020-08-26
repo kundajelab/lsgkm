@@ -2237,12 +2237,12 @@ void gkmkernel_init_problems(union svm_data *x, int n)
 }
 
 static void gkmkernel_add_one_sv(gkm_data *sv_i, double sv_coef,
-                                 int i, int nclass,
-                                 uint8_t force_nonlinear_init)
+                                 int i, int nclass, int svm_type,
+                                 uint8_t force_kmertree_init)
 {
     int j, k;
 
-    if ((nclass == 2) && (force_nonlinear_init==0) &&
+    if ((nclass == 2) && (force_kmertree_init==0) && (svm_type==0 || svm_type==1) &&
         (g_param->kernel_type != EST_TRUNC_RBF) && (g_param->kernel_type != GKM_RBF) &&
         (g_param->kernel_type != EST_TRUNC_PW_RBF)) {
 
@@ -2264,9 +2264,22 @@ static void gkmkernel_add_one_sv(gkm_data *sv_i, double sv_coef,
 }
 
 static void gkmkernel_init_sv_kmertree_objects(int nclass,
-                                               uint8_t force_nonlinear_init)
+                                               int svm_type,
+                                               uint8_t force_kmertree_init)
 {
-    if ((nclass == 2) && (force_nonlinear_init == 0) &&
+    clog_info(CLOG(LOGGER_ID),
+      "In gkmkernel_init_sv_kmertree_objects nclass=%d, svm_type=%d, force_kmertree_init=%d", nclass, svm_type, force_kmertree_init);
+    //Seems as though, under some conditions, it's only necessary to have
+    // g_sv_kmertreecoef initialized and g_sv_kmertree can remain uninitialized.
+    //But gkmkernel_kernelfunc_batch_sv (and related functions) rely on
+    // access to the kmertree. If you look at svm_predict_values in libsvm.cpp,
+    // you'll see which types of models/kernels end up calling
+    // gkmkernel_kernelfunc_batch_sv. Looks like regression, >2 class and
+    // RBF kernel stuff all rely on gkmkernel_kernelfunc_batch_sv. Also, the
+    // functions that I (Av) implemented for explanation also leverage functions
+    // that are analogous to gkmkernel_kernelfunc_batch_sv, which in turn
+    // require the kmertree
+    if ((nclass == 2) && (svm_type==0 || svm_type==1) && (force_kmertree_init == 0) &&
         (g_param->kernel_type != EST_TRUNC_RBF) && (g_param->kernel_type != GKM_RBF) &&
         (g_param->kernel_type != EST_TRUNC_PW_RBF)) {
         //speed-up for linear binary classifier with g_sv_kemrtreecoef
@@ -2279,16 +2292,18 @@ static void gkmkernel_init_sv_kmertree_objects(int nclass,
     }
 }
 
-void gkmkernel_init_sv(union svm_data *sv, double *coef, int nclass, int n) 
+void gkmkernel_init_sv(union svm_data *sv, double *coef, int nclass, int svm_type, int n) 
 {
     int i;
-    uint8_t force_nonlinear_init = 0;
+    uint8_t force_kmertree_init = 0;
 
-    gkmkernel_init_sv_kmertree_objects(nclass, force_nonlinear_init);
+    clog_info(CLOG(LOGGER_ID), "In gkmkernel_init_sv nclass=%d, svm_type=%d, force_kmertree_init=%d", nclass, svm_type, force_kmertree_init);
+
+    gkmkernel_init_sv_kmertree_objects(nclass, svm_type, force_kmertree_init);
 
     for (i=0; i<n; i++) {
-        gkmkernel_add_one_sv(sv[i].d, coef[i], i, nclass,
-                             force_nonlinear_init);
+        gkmkernel_add_one_sv(sv[i].d, coef[i], i, nclass, svm_type,
+                             force_kmertree_init);
     }
 
     g_sv_svm_data = sv;
@@ -2467,7 +2482,7 @@ double* gkmexplainsinglebasekernel_kernelfunc_batch_sv(
     double **singlebasepersv_explanation) 
 {
     if (g_sv_kmertree == NULL) {
-        clog_error(CLOG(LOGGER_ID), "kmertree for SVs has not been initialized. call gkmkernel_init_sv() first.");
+        clog_error(CLOG(LOGGER_ID), "kmertree for SVs has not been initialized. Call gkmkernel_init_sv_kmertree_objects() first and make sure g_sv_kmertree gets initialized within it.");
         return NULL;
     }
 
@@ -2523,7 +2538,7 @@ double* gkmexplainsinglebasekernel_kernelfunc_batch_sv(
 double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, double ***persv_explanation, int mode) 
 {
     if (g_sv_kmertree == NULL) {
-        clog_error(CLOG(LOGGER_ID), "in gkmexplainkernel_kernelfunc_batch_sv, kmertree for SVs has not been initialized. call gkmkernel_init_sv() first.");
+        clog_error(CLOG(LOGGER_ID), "in gkmexplainkernel_kernelfunc_batch_sv, kmertree for SVs has not been initialized. Call gkmkernel_init_sv_kmertree_objects() first and make sure g_sv_kmertree gets initialized within it.");
         return NULL;
     }
 
@@ -2581,7 +2596,7 @@ double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, do
 double* gkmkernel_kernelfunc_batch_sv(const gkm_data *da, double *res) 
 {
     if (g_sv_kmertree == NULL) {
-        clog_error(CLOG(LOGGER_ID), "kmertree for SVs has not been initialized. call gkmkernel_init_sv() first.");
+        clog_error(CLOG(LOGGER_ID), "kmertree for SVs has not been initialized. call gkmkernel_init_sv() first. Call gkmkernel_init_sv_kmertree_objects() first and make sure g_sv_kmertree gets initialized within it.");
         return NULL;
     }
 
@@ -2619,7 +2634,7 @@ double gkmkernel_predict(const gkm_data *d)
     double result = 0;
 
     if (g_sv_kmertreecoef == NULL) {
-        clog_error(CLOG(LOGGER_ID), "kmertreecoef has not been initialized. call gkmkernel_init_sv() first.\n");
+        clog_error(CLOG(LOGGER_ID), "kmertreecoef has not been initialized. call gkmkernel_init_sv() first. Call gkmkernel_init_sv_kmertree_objects() first and make sure g_sv_kmertree gets initialized within it.\n");
         return 0;
     }
 
@@ -2909,7 +2924,7 @@ static bool read_model_header(FILE *fp, svm_model* model)
 
 // load a model with gkmtree initialization
 svm_model *svm_load_model(const char *model_file_name,
-                          uint8_t force_nonlinear_init)
+                          uint8_t force_kmertree_init)
 {
     FILE *fp = fopen(model_file_name,"rb");
     if(fp==NULL) return NULL;
@@ -2943,7 +2958,9 @@ svm_model *svm_load_model(const char *model_file_name,
     gkmkernel_init(&model->param);
 
     // initialization of SV kmertree
-    gkmkernel_init_sv_kmertree_objects(model->nr_class, force_nonlinear_init);
+    gkmkernel_init_sv_kmertree_objects(model->nr_class,
+                                       model->param.svm_type, 
+                                       force_kmertree_init);
 
     // read sv_coef and SV
     int elements = 0;
@@ -2996,7 +3013,8 @@ svm_model *svm_load_model(const char *model_file_name,
 
         // add SV to kmertree or kmertreecoef
         gkmkernel_add_one_sv(model->SV[i].d, model->sv_coef[0][i],
-                             i, model->nr_class, force_nonlinear_init);
+                             i, model->nr_class, model->param.svm_type,
+                             force_kmertree_init);
 
         // free-up unnecessary data
         gkmkernel_free_object(model->SV[i].d);

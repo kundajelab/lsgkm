@@ -2550,8 +2550,22 @@ double svm_predict_values(const svm_model *model, const svm_data x, double* dec_
        model->param.svm_type == EPSILON_SVR ||
        model->param.svm_type == NU_SVR)
     {
-        assert (1==2); //I don't think this block is executed for gkm-svm
-        //since it isn't set up for one class stuff or regression stuff
+        double *sv_coef = model->sv_coef[0];
+        double sum = 0;
+
+        gkmkernel_kernelfunc_batch_sv(x.d, kvalue);
+
+        for(i=0;i<l;i++)
+            sum += sv_coef[i] * kvalue[i];
+        sum -= model->rho[0];
+        *dec_values = sum;
+
+        free(kvalue);
+
+        if(model->param.svm_type == ONE_CLASS)
+            return (sum>0)?1:-1;
+        else
+            return sum;
     }
     else
     {

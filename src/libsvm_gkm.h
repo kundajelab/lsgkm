@@ -83,7 +83,7 @@ void gkmkernel_swap_index(int i, int j);
 void gkmkernel_update_index();
 double* gkmkernel_kernelfunc_batch_all(const int a, const int start, const int end, double *res);
 
-void gkmkernel_init_sv(union svm_data *sv, double *coef, int nclass, int n);
+void gkmkernel_init_sv(union svm_data *sv, double *coef, int nclass, int svm_type, int n);
 void gkmkernel_destroy_sv();
 double* gkmkernel_kernelfunc_batch_sv(const gkm_data *d, double *res);
 double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *d, double *res, double ***persv_explanation, int mode);

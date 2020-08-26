@@ -221,8 +221,8 @@ int main(int argc, char **argv)
     }
 
     clog_info(CLOG(LOGGER_ID), "load model %s", modelfile);
-    uint8_t force_nonlinear_init = 0;
-    if((model=svm_load_model(modelfile, force_nonlinear_init))==0) {
+    uint8_t force_kmertree_init = 0;
+    if((model=svm_load_model(modelfile, force_kmertree_init))==0) {
         clog_error(CLOG(LOGGER_ID),"can't open model file %s", modelfile);
         exit(1);
     }

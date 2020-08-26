@@ -5,3 +5,4 @@ src/gkmtrain
 src/libsvm.o
 src/libsvm_gkm.o
 tests
+.DS_Store

@@ -44,6 +44,12 @@ void print_usage_and_exit()
             "            <outprefix>.cvpred.txt\n"
             "\n"
             "Options:\n"
+            " -y <0 ~ 4>   set svm type (default: 0 C_SVC)\n"
+            "                0 -- C_SVC\n"
+            "                1 -- NU_SVC\n"
+            "                2 -- ONE_CLASS\n"
+            "                3 -- EPSILON_SVR\n"
+            "                4 -- NU_SVR\n"
             " -t <0 ~ 6>   set kernel function (default: 4 wgkm)\n"
             "              NOTE: RBF kernels (3, 5 and 6) work best with -c 10 -g 2\n"
             "                0 -- gapped-kmer\n"
@@ -164,8 +170,11 @@ int main(int argc, char** argv)
     icv = 0;
 
 	int c;
-	while ((c = getopt (argc, argv, "t:l:k:d:g:M:H:c:e:w:m:x:i:r:sv:T:")) != -1) {
+	while ((c = getopt (argc, argv, "y:t:l:k:d:g:M:H:c:e:w:m:x:i:r:sv:T")) != -1) {
 		switch (c) {
+            case 'y':
+                param.svm_type = atoi(optarg);
+                break;
             case 't':
                 param.kernel_type = atoi(optarg);
                 break;
@@ -275,6 +284,7 @@ int main(int argc, char** argv)
     clog_info(CLOG(LOGGER_ID), "  outprefix = %s", outprefix);
 
     clog_info(CLOG(LOGGER_ID), "Parameters:");
+    clog_info(CLOG(LOGGER_ID), "  svm-type = %d", param.svm_type);
     clog_info(CLOG(LOGGER_ID), "  kernel-type = %d", param.kernel_type);
     clog_info(CLOG(LOGGER_ID), "  L = %d", param.L);
     clog_info(CLOG(LOGGER_ID), "  k = %d", param.k);
