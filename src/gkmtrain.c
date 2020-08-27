@@ -71,6 +71,7 @@ void print_usage_and_exit()
             "              function for wgkm-kernels. -t 4 or 5 only (default: 50)\n"
             " -c <float>   set the regularization parameter SVM-C (default: 1.0)\n"
             " -e <float>   set the precision parameter epsilon (default: 0.001)\n"
+            " -p <float>   set the SVR epsilon (default: 0.1)\n"
             " -w <float>   set the parameter SVM-C to w*C for the positive set (default: 1.0)\n"
             " -m <float>   set cache memory size in MB (default: 100.0)\n"
             "              NOTE: Large cache signifcantly reduces runtime. >4Gb is recommended\n" 
@@ -164,14 +165,14 @@ int main(int argc, char** argv)
     param.nr_weight = 0;
     param.weight_label = (int *) malloc(sizeof(int)*1);
     param.weight = (double *) malloc(sizeof(double)*1);
-    param.p = 0.1; //not used
+    param.p = 0.1; //for SVR
     param.probability = 0; //not used
     param.nu = 0.5; //not used
     cross_validation = 0;
     icv = 0;
 
 	int c;
-	while ((c = getopt (argc, argv, "y:t:l:k:d:g:M:H:c:e:w:m:x:i:r:sv:T:")) != -1) {
+	while ((c = getopt (argc, argv, "y:t:l:k:d:g:M:H:c:e:p:w:m:x:i:r:sv:T:")) != -1) {
 		switch (c) {
             case 'y':
                 param.svm_type = atoi(optarg);
@@ -207,6 +208,9 @@ int main(int argc, char** argv)
 				break;
 			case 'e':
 				param.eps = atof(optarg);
+				break;
+			case 'p':
+				param.p = atof(optarg);
 				break;
 			case 'w':
                 param.nr_weight = 1;
@@ -301,7 +305,8 @@ int main(int argc, char** argv)
     if (param.nr_weight == 1) {
     clog_info(CLOG(LOGGER_ID), "  w = %g", param.weight[0]);
     }
-    clog_info(CLOG(LOGGER_ID), "  eps = %g", param.eps);
+    clog_info(CLOG(LOGGER_ID), "  eps (convergence) = %g", param.eps);
+    clog_info(CLOG(LOGGER_ID), "  p (SVR epsilon) = %g", param.p);
     clog_info(CLOG(LOGGER_ID), "  shrinking = %s", param.shrinking ? "yes" : "no");
 
     sprintf(model_file_name,"%s.model.txt", outprefix);

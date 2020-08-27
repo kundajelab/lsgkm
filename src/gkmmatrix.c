@@ -127,21 +127,18 @@ int main(int argc, char** argv)
     param.gamma = 1.0;
     param.cache_size = 100;
     param.C = 1;
-    param.eps = 1e-3;
+    param.eps = 1e-3; //this is a convergence criterion epsilon
     param.shrinking = 0;
     param.nr_weight = 0;
     param.weight_label = (int *) malloc(sizeof(int)*1);
     param.weight = (double *) malloc(sizeof(double)*1);
-    param.p = 0.1; //not used
+    param.p = 0.1; //this is the epsilon for SVR
     param.probability = 0; //not used
     param.nu = 0.5; //not used
 
 	int c;
-	while ((c = getopt (argc, argv, "y:t:l:k:d:g:v:T:")) != -1) {
+	while ((c = getopt (argc, argv, "t:l:k:d:g:v:T:")) != -1) {
 		switch (c) {
-            case 'y':
-                param.svm_type = atoi(optarg);
-                break;
             case 't':
                 param.kernel_type = atoi(optarg);
                 break;
