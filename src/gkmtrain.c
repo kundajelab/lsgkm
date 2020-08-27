@@ -33,23 +33,23 @@ void print_usage_and_exit()
 {
     printf(
             "\n"
-            "Usage: gkmtrain [options] <posfile> <negfile> <outprefix>\n"
+            "Usage: gkmtrain [options] <file1> <file2> <outprefix>\n"
             "\n"
             " train gkm-SVM using libSVM\n"
             "\n"
             "Arguments:\n"
-            " posfile: positive sequence file (FASTA format)\n"
-            " negfile: negative sequence file (FASTA format)\n"
+            " file1: if classification: positive sequence file (FASTA format). If regression: all sequences file (FASTA format)\n"
+            " file2: if classification: negative sequence file (FASTA format). If regression: corresponding labels (one per line)\n"
             " outprefix: prefix of output file(s) <outprefix>.model.txt or\n"
             "            <outprefix>.cvpred.txt\n"
             "\n"
             "Options:\n"
             " -y <0 ~ 4>   set svm type (default: 0 C_SVC)\n"
             "                0 -- C_SVC\n"
-            "                1 -- NU_SVC\n"
-            "                2 -- ONE_CLASS\n"
+            "                1 -- NU_SVC (untested)\n"
+            "                2 -- ONE_CLASS (untested)\n"
             "                3 -- EPSILON_SVR\n"
-            "                4 -- NU_SVR\n"
+            "                4 -- NU_SVR (untested)\n"
             " -t <0 ~ 6>   set kernel function (default: 4 wgkm)\n"
             "              NOTE: RBF kernels (3, 5 and 6) work best with -c 10 -g 2\n"
             "                0 -- gapped-kmer\n"
@@ -91,7 +91,8 @@ void print_usage_and_exit()
 	exit(0);
 }
 
-void read_problem(const char *posfile, const char *negfile);
+void read_problem_svc(const char *file1, const char *file2);
+void read_problem_svr(const char *file1, const char *file2);
 void do_cross_validation(const char *filename);
 
 static struct svm_parameter param;
@@ -250,8 +251,8 @@ int main(int argc, char** argv)
     }
 
 	int index = optind;
-	char *posfile = argv[index++];
-	char *negfile = argv[index++];
+	char *file1 = argv[index++];
+	char *file2 = argv[index++];
 	char *outprefix = argv[index];
 
     switch(verbosity) 
@@ -279,8 +280,8 @@ int main(int argc, char** argv)
     gkmkernel_set_num_threads(nthreads);
 
     clog_info(CLOG(LOGGER_ID), "Arguments:");
-    clog_info(CLOG(LOGGER_ID), "  posfile = %s", posfile);
-    clog_info(CLOG(LOGGER_ID), "  negfile = %s", negfile);
+    clog_info(CLOG(LOGGER_ID), "  file1 = %s", file1);
+    clog_info(CLOG(LOGGER_ID), "  file2 = %s", file2);
     clog_info(CLOG(LOGGER_ID), "  outprefix = %s", outprefix);
 
     clog_info(CLOG(LOGGER_ID), "Parameters:");
@@ -321,7 +322,11 @@ int main(int argc, char** argv)
 
     max_line_len = 1024;
     line = (char *) malloc(sizeof(char) * ((size_t) max_line_len));
-    read_problem(posfile, negfile);
+    if (param.svm_type == C_SVC || param.svm_type == NU_SVC) {
+        read_problem_svc(file1, file2);
+    } else {
+        read_problem_svr(file1, file2);
+    }
 
     error_msg = svm_check_parameter(&prob,&param);
     if(error_msg) {
@@ -357,7 +362,93 @@ int main(int argc, char** argv)
 	return 0;
 }
 
-void read_fasta_file(const char *filename, int offset, int label)
+void read_labels_regression(const char *filename)
+{
+    FILE *fp = fopen(filename,"r");
+
+    if(fp == NULL) {
+        clog_error(CLOG(LOGGER_ID), "can't open file");
+        exit(1);
+    }
+
+    clog_info(CLOG(LOGGER_ID), "reading labels");
+
+    int iseq = 0; //index of the sequence
+    char *dummyptr;
+    while (readline(fp)) {
+        if (iseq > prob.l) {
+            clog_error(CLOG(LOGGER_ID), "error occured while reading sequence file (%d >= %d).\n", iseq, prob.l);
+            exit(1);
+        }
+        prob.y[iseq] = strtod(line, &dummyptr);
+        ++iseq;
+    }
+    
+    clog_info(CLOG(LOGGER_ID), "done reading labels");
+
+    fclose(fp);
+}
+
+void read_fasta_file_regression(const char *filename)
+{
+    FILE *fp = fopen(filename,"r");
+
+    if(fp == NULL) {
+        clog_error(CLOG(LOGGER_ID), "can't open file");
+        exit(1);
+    }
+
+    int iseq = -1; //index of the sequence
+    char seq[MAX_SEQ_LENGTH];
+    char sid[MAX_SEQ_LENGTH];
+    int seqlen = 0;
+    sid[0] = '\0';
+    while (readline(fp)) {
+        if (iseq >= prob.l) {
+            clog_error(CLOG(LOGGER_ID), "error occured while reading sequence file (%d >= %d).\n", iseq, prob.l);
+            exit(1);
+        }
+
+        if (line[0] == '>') {
+            if (((iseq % 1000) == 0)) {
+                clog_info(CLOG(LOGGER_ID), "reading... %d", iseq);
+            }
+
+            if (iseq >= 0) {
+                prob.x[iseq].d = gkmkernel_new_object(seq, sid, iseq);
+            }
+            ++iseq;
+
+            seq[0] = '\0'; //reset sequence
+            seqlen = 0;
+            char *ptr = strtok(line," \t\r\n");
+            if (strlen(ptr) >= MAX_SEQ_LENGTH) {
+                clog_error(CLOG(LOGGER_ID), "maximum sequence id length is %d.\n", MAX_SEQ_LENGTH-1);
+                exit(1);
+            }
+            strcpy(sid, ptr+1);
+        } else {
+            if (seqlen < MAX_SEQ_LENGTH-1) {
+                if ((((size_t) seqlen) + strlen(line)) >= MAX_SEQ_LENGTH) {
+                    clog_warn(CLOG(LOGGER_ID), "maximum sequence length allowed is %d. The first %d nucleotides of %s will only be used (Note: You can increase the MAX_SEQ_LENGTH parameter in libsvm_gkm.h and recompile).", MAX_SEQ_LENGTH-1, MAX_SEQ_LENGTH-1, sid);
+                    int remaining_len = MAX_SEQ_LENGTH - seqlen - 1;
+                    line[remaining_len] = '\0';
+                }
+                strcat(seq, line);
+                seqlen += (int) strlen(line);
+            }
+        }
+    }
+
+    //last one
+    prob.x[iseq].d = gkmkernel_new_object(seq, sid, iseq);
+
+    clog_info(CLOG(LOGGER_ID), "reading... done");
+
+    fclose(fp);
+}
+
+void read_fasta_file_classification(const char *filename, int offset, int label)
 {
     FILE *fp = fopen(filename,"r");
 
@@ -439,21 +530,32 @@ int count_sequences(const char *filename)
     return nseqs;
 }
 
-void read_problem(const char *posfile, const char*negfile)
+void read_problem_svc(const char *file1, const char *file2)
 {
-    int n1 = count_sequences(posfile);
-    int n2 = count_sequences(negfile);
-
+    int n1 = count_sequences(file1);
+    int n2 = count_sequences(file2);
     prob.l = n1+n2;
 
     prob.y = (double *) malloc (sizeof(double) * ((size_t) prob.l));
     prob.x = (union svm_data *) malloc(sizeof(union svm_data) * ((size_t) prob.l));
 
-    clog_info(CLOG(LOGGER_ID), "reading %d sequences from %s", n1, posfile);
-    read_fasta_file(posfile, 0, 1);
+    clog_info(CLOG(LOGGER_ID), "reading %d sequences from %s", n1, file1);
+    read_fasta_file_classification(file1, 0, 1);
 
-    clog_info(CLOG(LOGGER_ID), "reading %d sequences from %s", n2, negfile);
-    read_fasta_file(negfile, n1, -1);
+    clog_info(CLOG(LOGGER_ID), "reading %d sequences from %s", n2, file2);
+    read_fasta_file_classification(file2, n1, -1);
+}
+
+void read_problem_svr(const char *file1, const char *file2)
+{
+    int n1 = count_sequences(file1);
+    prob.l = n1;
+
+    prob.y = (double *) malloc (sizeof(double) * ((size_t) prob.l));
+    prob.x = (union svm_data *) malloc(sizeof(union svm_data) * ((size_t) prob.l));
+
+    read_fasta_file_regression(file1);
+    read_labels_regression(file2);
 }
 
 void do_cross_validation(const char *filename)
