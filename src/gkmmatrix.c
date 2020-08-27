@@ -137,7 +137,7 @@ int main(int argc, char** argv)
     param.nu = 0.5; //not used
 
 	int c;
-	while ((c = getopt (argc, argv, "y:t:l:k:d:g:v:T")) != -1) {
+	while ((c = getopt (argc, argv, "y:t:l:k:d:g:v:T:")) != -1) {
 		switch (c) {
             case 'y':
                 param.svm_type = atoi(optarg);

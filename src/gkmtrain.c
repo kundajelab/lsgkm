@@ -171,7 +171,7 @@ int main(int argc, char** argv)
     icv = 0;
 
 	int c;
-	while ((c = getopt (argc, argv, "y:t:l:k:d:g:M:H:c:e:w:m:x:i:r:sv:T")) != -1) {
+	while ((c = getopt (argc, argv, "y:t:l:k:d:g:M:H:c:e:w:m:x:i:r:sv:T:")) != -1) {
 		switch (c) {
             case 'y':
                 param.svm_type = atoi(optarg);
@@ -486,8 +486,7 @@ void read_fasta_file_classification(const char *filename, int offset, int label)
                 clog_error(CLOG(LOGGER_ID), "maximum sequence id length is %d.\n", MAX_SEQ_LENGTH-1);
                 exit(1);
             }
-            strcpy(sid, ptr+1);
-        } else {
+            strcpy(sid, ptr+1); } else {
             if (seqlen < MAX_SEQ_LENGTH-1) {
                 if ((((size_t) seqlen) + strlen(line)) >= MAX_SEQ_LENGTH) {
                     clog_warn(CLOG(LOGGER_ID), "maximum sequence length allowed is %d. The first %d nucleotides of %s will only be used (Note: You can increase the MAX_SEQ_LENGTH parameter in libsvm_gkm.h and recompile).", MAX_SEQ_LENGTH-1, MAX_SEQ_LENGTH-1, sid);
