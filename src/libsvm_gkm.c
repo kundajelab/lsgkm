@@ -1057,6 +1057,7 @@ static void kmertree_dfs_explainsinglebase(
 }
 
 
+//refer to kmertree_dfs_withexplanation for Av Shrikumar's documentation
 static void kmertree_dfs(const KmerTree *tree, const int last_seqid, const int depth, const int curr_node_index, const BaseMismatchCount *curr_matching_bases, const int curr_num_matching_bases, int **mmprof)
 {
     int i, j;
@@ -1309,6 +1310,7 @@ static void kmertreecoef_destroy(KmerTreeCoef *tree)
     }
 }
 
+//difference from kmertree_dfs seems to be no last_seqid and no mmprof
 static double kmertreecoef_dfs(const KmerTreeCoef *tree, const int depth, const int curr_node_index, const BaseMismatchCount *curr_matching_bases, const int curr_num_matching_bases)
 {
     int j;
@@ -2269,16 +2271,33 @@ static void gkmkernel_init_sv_kmertree_objects(int nclass,
 {
     clog_info(CLOG(LOGGER_ID),
       "In gkmkernel_init_sv_kmertree_objects nclass=%d, svm_type=%d, force_kmertree_init=%d", nclass, svm_type, force_kmertree_init);
-    //Seems as though, under some conditions, it's only necessary to have
-    // g_sv_kmertreecoef initialized and g_sv_kmertree can remain uninitialized.
-    //But gkmkernel_kernelfunc_batch_sv (and related functions) rely on
-    // access to the kmertree. If you look at svm_predict_values in libsvm.cpp,
+    //If the prediction fucntion calls gkmkernel_predict rather than
+    // gkmkernel_kernelfunc_batch_sv, then it's only
+    // necessary to have g_sv_kmertreecoef initialized and g_sv_kmertree can
+    // remain uninitialized. The latter function seems to compute the
+    // kernel dot product for each individual support vector separately.
+    //The crux seems to be that in the case of the non-rbf kernels, the value
+    // of the gapped kmer vector dot product does not impact how much the
+    // dot product is scaled by in order to get the final kmer output (because
+    // that rescaling is just a magnitude normalization in the case of the non
+    // rbf kernels, which is determined by the gapped kmer vector of the SVs
+    // and the gapped kmer vector of the input sequence, but does NOT depend
+    // on what the dot product turned out to be. My guess is that
+    // g_sv_kmertreecoef has information about *all* the coefficients needed
+    // for SV rescalling built-in (including alpha values). The comment says
+    // this achieves a 20% speedup.
+    //For cases when you need to breakdown of the kernel output by
+    // individual support vectors, you want to use
+    // gkmkernel_kernelfunc_batch_sv, which relies on access to the kmertree.
+    //If you look at svm_predict_values in libsvm.cpp,
     // you'll see which types of models/kernels end up calling
+    // gkmkernel_predict rather than
     // gkmkernel_kernelfunc_batch_sv. Looks like regression, >2 class and
     // RBF kernel stuff all rely on gkmkernel_kernelfunc_batch_sv. Also, the
     // functions that I (Av) implemented for explanation also leverage functions
     // that are analogous to gkmkernel_kernelfunc_batch_sv, which in turn
-    // require the kmertree
+    // require the kmertree (would need to think more about whether similar
+    // speedups may in fact be achievable for the non-RBF cases)
     if ((nclass == 2) && (svm_type==0 || svm_type==1) && (force_kmertree_init == 0) &&
         (g_param->kernel_type != EST_TRUNC_RBF) && (g_param->kernel_type != GKM_RBF) &&
         (g_param->kernel_type != EST_TRUNC_PW_RBF)) {
@@ -2552,7 +2571,10 @@ double* gkmexplainkernel_kernelfunc_batch_sv(const gkm_data *da, double *res, do
 
     gkmexplainkernel_kernelfunc_batch_single(da, g_sv_kmertree, 0, g_sv_num, res, persv_explanation, mode);
 
-    //normalization
+    //normalization. res ultimately stores the result of the kernel for each support
+    // vector. da->sqnorm would store the magnitude of the input sequence's
+    // gapped kmer embedding while g_sv_svm_data[j].d->sqnorm would store the
+    // support vector's gapped kmer vector magnitude 
     double da_sqnorm = da->sqnorm;
     for (j=0; j<g_sv_num; j++) {
         double denom = (da_sqnorm*g_sv_svm_data[j].d->sqnorm);
@@ -2634,10 +2656,13 @@ double gkmkernel_predict(const gkm_data *d)
     double result = 0;
 
     if (g_sv_kmertreecoef == NULL) {
-        clog_error(CLOG(LOGGER_ID), "kmertreecoef has not been initialized. call gkmkernel_init_sv() first. Call gkmkernel_init_sv_kmertree_objects() first and make sure g_sv_kmertree gets initialized within it.\n");
+        clog_error(CLOG(LOGGER_ID), "kmertreecoef has not been initialized. Call gkmkernel_init_sv_kmertree_objects() first and make sure g_sv_kmertreecoef gets initialized within it.\n");
         return 0;
     }
 
+    //Note: no breakdown by individual support vector...seems like the info
+    // on the alpha values was built into kmertreecoef. Rescaling by
+    // the magnitude of the gapped kmer vector must also be built in.
     if (g_param_nthreads == 1) {
         result = kmertreecoef_dfs_single(d);
     } else if (g_param_nthreads == 4) {
@@ -2651,6 +2676,8 @@ double gkmkernel_predict(const gkm_data *d)
         result = kmertreecoef_dfs_single(d);
     }
 
+    //Rescaling by the magnitude of the input sequence gapped kmer vector
+    // before returning.
     return result/d->sqnorm;
 }
 

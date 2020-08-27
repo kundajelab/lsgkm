@@ -1918,7 +1918,7 @@ static void svm_binary_svc_probability(
             subparam.weight[1]=Cn;
             struct svm_model *submodel = svm_train(&subprob,&subparam);
 
-            gkmkernel_init_sv(submodel->SV, submodel->sv_coef[0], submodel->nr_class, submodel->l);
+            gkmkernel_init_sv(submodel->SV, submodel->sv_coef[0], submodel->nr_class, submodel->param.svm_type, submodel->l);
             for(j=begin;j<end;j++)
             {
                 svm_predict_values(submodel,prob->x[perm[j]],&(dec_values[perm[j]]));
@@ -2425,7 +2425,7 @@ void svm_cross_validation(const svm_problem *prob, const svm_parameter *param, i
 
         struct svm_model *submodel = svm_train(&subprob,param);
 
-        gkmkernel_init_sv(submodel->SV, submodel->sv_coef[0], submodel->nr_class, submodel->l);
+        gkmkernel_init_sv(submodel->SV, submodel->sv_coef[0], submodel->nr_class, submodel->param.svm_type, submodel->l);
 
         if(param->probability && 
            (param->svm_type == C_SVC || param->svm_type == NU_SVC))
@@ -2550,6 +2550,7 @@ double svm_predict_values(const svm_model *model, const svm_data x, double* dec_
        model->param.svm_type == EPSILON_SVR ||
        model->param.svm_type == NU_SVR)
     {
+        //sv_coef seems to store the alpha values
         double *sv_coef = model->sv_coef[0];
         double sum = 0;
 
@@ -2585,17 +2586,21 @@ double svm_predict_values(const svm_model *model, const svm_data x, double* dec_
 
         gkmkernel_kernelfunc_batch_sv(x.d, kvalue);
 
+        //start is just storing the index for which support vectors start
+        // corresponding to a particular class
         int *start = Malloc(int,nr_class);
         start[0] = 0;
         for(i=1;i<nr_class;i++)
             start[i] = start[i-1]+model->nSV[i-1];
 
+        //initialize the votes for all the classes to be 0
         int *vote = Malloc(int,nr_class);
         for(i=0;i<nr_class;i++)
             vote[i] = 0;
 
 
-        int p=0;
+        int p=0; //p is iterating over a pair of classes?
+        //compare all the pairs, and see which pair wins?
         for(i=0;i<nr_class;i++)
             for(int j=i+1;j<nr_class;j++)
             {
@@ -2606,14 +2611,20 @@ double svm_predict_values(const svm_model *model, const svm_data x, double* dec_
                 int cj = model->nSV[j];
                 
                 int k;
+                //sv_coef seems to store the alpha values (which seem to
+                // include the sign of the class label)
+                //Comment from elsewhere, reproducing here:
+                // classifier (i,j): coefficients with                          
+                // i are in sv_coef[j-1][nz_start[i]...],                       
+                // j are in sv_coef[i][nz_start[j]...]
                 double *coef1 = model->sv_coef[j-1];
                 double *coef2 = model->sv_coef[i];
                 for(k=0;k<ci;k++)
                     sum += coef1[si+k] * kvalue[si+k];
                 for(k=0;k<cj;k++)
                     sum += coef2[sj+k] * kvalue[sj+k];
-                sum -= model->rho[p];
-                dec_values[p] = sum;
+                sum -= model->rho[p]; //rho[p] is the bias for a pair?
+                dec_values[p] = sum; //dec_values = "decision values"?
 
                 if(dec_values[p] > 0)
                     ++vote[i];
@@ -2622,6 +2633,7 @@ double svm_predict_values(const svm_model *model, const svm_data x, double* dec_
                 p++;
             }
 
+        //figure out which class got the max vote...
         int vote_max_idx = 0;
         for(i=1;i<nr_class;i++)
             if(vote[i] > vote[vote_max_idx])
@@ -2659,15 +2671,46 @@ double svm_predict_and_singlebaseexplain_values(const svm_model *model,
        model->param.svm_type == EPSILON_SVR ||
        model->param.svm_type == NU_SVR)
     {
-        assert (1==2); //I don't think this block is executed for gkm-svm
-        //since it isn't set up for one class stuff or regression stuff
+
+        //sv_coef seems to store the alpha values
+        double *sv_coef = model->sv_coef[0];
+        double sum = 0;
+
+        gkmexplainsinglebasekernel_kernelfunc_batch_sv(x.d, kvalue,
+                                                  singlebasepersv_explanation);
+
+        for(i=0;i<l;i++)
+            sum += sv_coef[i] * kvalue[i];
+
+        int g;
+        for (g=0; g<MAX_ALPHABET_SIZE; g++) { 
+            for(i=0;i<l;i++)
+                explanation[g] += singlebasepersv_explanation[g][i]*sv_coef[i];
+        }
+
+        sum -= model->rho[0];
+        *dec_values = sum;
+
+        free(kvalue);
+        //free per-sv explanation
+        for (g=0; g<MAX_ALPHABET_SIZE; g++) {
+            free(singlebasepersv_explanation[g]);
+        }
+        free(singlebasepersv_explanation);
+
+        if(model->param.svm_type == ONE_CLASS)
+            return (sum>0)?1:-1;
+        else
+            return sum;
+
+
     }
     else
     {
         int nr_class = model->nr_class;
 
         gkmexplainsinglebasekernel_kernelfunc_batch_sv(x.d, kvalue,
-                                                       singlebasepersv_explanation);
+                                                  singlebasepersv_explanation);
         //gkmexplainkernel_kernelfunc_batch_sv(x.d, kvalue,
         //                                     singlebasepersv_explanation, 0);
 
@@ -2734,9 +2777,12 @@ double svm_predict_and_singlebaseexplain_values(const svm_model *model,
 double svm_predict_and_explain_values(const svm_model *model,
     const svm_data x, double* dec_values, double **explanation, int mode)
 {
+    //i iterates over sequence, j iterates over alphabet, k iterates over
+    // support vector
     int i,j,k;
 
     int l = model->l;
+    //kvalue will end up storing the kernel output with each support vector
     double *kvalue = Malloc(double,l);
 
     int seqlen = x.d->seqlen;
@@ -2763,8 +2809,44 @@ double svm_predict_and_explain_values(const svm_model *model,
        model->param.svm_type == EPSILON_SVR ||
        model->param.svm_type == NU_SVR)
     {
-        assert (1==2); //I don't think this block is executed for gkm-svm
-        //since it isn't set up for one class stuff or regression stuff
+        gkmexplainkernel_kernelfunc_batch_sv(x.d, kvalue,
+                                             persv_explanation, mode);
+
+        //sv_coef seems to store the alpha values
+        double *sv_coef = model->sv_coef[0];
+        double sum = 0;
+
+        gkmkernel_kernelfunc_batch_sv(x.d, kvalue);
+
+        for(i=0;i<l;i++)
+            sum += sv_coef[i] * kvalue[i];
+
+        int h,g;
+        for (h=0; h<seqlen; h++) {
+            for (g=0; g<MAX_ALPHABET_SIZE; g++) { 
+                for(i=0;i<l;i++)
+                    explanation[h][g] += persv_explanation[h][g][i]*sv_coef[i];
+            }
+        }
+
+        sum -= model->rho[0];
+        *dec_values = sum;
+
+        free(kvalue);
+        //free per-sv explanation
+        for (h=0; h<seqlen; h++) {
+            for (g=0; g<MAX_ALPHABET_SIZE; g++) {
+                free(persv_explanation[h][g]);
+            }
+            free(persv_explanation[h]);
+        }
+        free(persv_explanation);
+
+        if(model->param.svm_type == ONE_CLASS)
+            return (sum>0)?1:-1;
+        else
+            return sum;
+
     }
     else
     {
