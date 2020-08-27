@@ -2269,8 +2269,6 @@ static void gkmkernel_init_sv_kmertree_objects(int nclass,
                                                int svm_type,
                                                uint8_t force_kmertree_init)
 {
-    clog_info(CLOG(LOGGER_ID),
-      "In gkmkernel_init_sv_kmertree_objects nclass=%d, svm_type=%d, force_kmertree_init=%d", nclass, svm_type, force_kmertree_init);
     //If the prediction fucntion calls gkmkernel_predict rather than
     // gkmkernel_kernelfunc_batch_sv, then it's only
     // necessary to have g_sv_kmertreecoef initialized and g_sv_kmertree can
